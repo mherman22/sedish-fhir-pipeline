@@ -204,6 +204,12 @@
     mspp_code: VARCHAR(10)
   gateway: mysql
 
+- name: '`consolidated_db`.`concept`'
+  columns:
+    concept_id: INT
+    uuid: CHAR(38)
+  gateway: mysql
+
 - name: '`consolidated_db`.`concept_name`'
   columns:
     concept_id: INT
