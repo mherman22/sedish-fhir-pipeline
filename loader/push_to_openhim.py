@@ -39,7 +39,7 @@ DRY_RUN = env("DRY_RUN", "") not in ("", "0", "false")
 EPOCH = "1970-01-01 00:00:00"
 # patient-scoped clinical views to push (each carries fhir_id, patient_fhir_id, changed_at).
 # Add a resource = a SQLMesh model + an entry here.
-CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,observation,allergy_intolerance").split(",") if v.strip()]
+CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,observation,allergy_intolerance,condition").split(",") if v.strip()]
 
 def _auth(c): return "Basic " + base64.b64encode(f"{c[0]}:{c[1]}".encode()).decode()
 

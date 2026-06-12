@@ -251,6 +251,25 @@
     mspp_code: VARCHAR(10)
   gateway: mysql
 
+# iSantePlus DERIVED diagnoses table (no uuid -> Condition uses a synthetic id).
+- name: '`consolidated_db`.`patient_diagnosis`'
+  columns:
+    patient_id: INT
+    encounter_id: INT
+    location_id: INT
+    encounter_date: DATETIME
+    concept_group: INT
+    obs_group_id: INT
+    concept_id: INT
+    answer_concept_id: INT
+    suspected_confirmed: INT
+    primary_secondary: INT
+    last_updated_date: DATETIME
+    voided: INT
+    date_updated: DATETIME
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
 # Derived iSantePlus denormalization (flattened per-patient summary; own PK
 # (patient_id, mspp_code, date_created), no person_id, nullable uuid). Column
 # names match the dump verbatim — incl. camelCase `maritalStatus`.
