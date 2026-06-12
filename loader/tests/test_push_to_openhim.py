@@ -196,14 +196,15 @@ class FakeConn:
     def commit(self): self.committed = True
 
 
-def _run_main(monkeypatch, data, dry_run=False):
+def _run_main(monkeypatch, data, dry_run=False, send_result="200"):
     sent = []
     cur = FakeCursor(data)
     conn = FakeConn(cur)
     monkeypatch.setattr(L, "DRY_RUN", dry_run)
     monkeypatch.setattr(L.pymysql, "connect", lambda **kw: conn)
     monkeypatch.setattr(L, "send", lambda url, method, cred, body, **kw:
-                        sent.append((method, url, cred, body)) or "200")
+                        sent.append((method, url, cred, body)) or
+                        (send_result(method) if callable(send_result) else send_result))
     L.main()
     return sent, conn, cur
 
@@ -306,6 +307,27 @@ def test_main_skips_clinical_with_no_patient_row(monkeypatch):
     # intended: a skipped (voided/absent) patient's clinical watermark still advances,
     # so it is NOT retried forever (consolidated_db creates person before obs, FK order).
     assert _advances(cur) == {"observation": DT2}
+
+
+def test_main_holds_watermark_when_a_push_fails(monkeypatch):
+    # CR PUT fails for the (only) patient -> watermark must NOT advance, no commit,
+    # so the delta is retried next cycle (no silent drop).
+    data = {"watermark": {},
+            "patients": {},
+            "delta": {"patient": [("pA", _pat("pA"), DT1)], "encounter": [],
+                      "observation": [("o1", "pA", _obs("o1"), DT2)]}}
+    send_result = lambda method: "ERR 500: []" if method == "PUT" else "200"
+    sent, conn, cur = _run_main(monkeypatch, data, send_result=send_result)
+    assert sent                      # it did attempt the push
+    assert _advances(cur) == {}      # but advanced nothing
+    assert conn.committed is False   # and did not commit
+
+
+def test_main_advances_only_when_all_succeed(monkeypatch):
+    data = {"watermark": {}, "patients": {},
+            "delta": {"patient": [("pA", _pat("pA"), DT1)], "encounter": [], "observation": []}}
+    _, conn, cur = _run_main(monkeypatch, data)      # all "200"
+    assert _advances(cur) == {"patient": DT1} and conn.committed is True
 
 
 def test_main_dry_run_pushes_but_does_not_advance_or_commit(monkeypatch):

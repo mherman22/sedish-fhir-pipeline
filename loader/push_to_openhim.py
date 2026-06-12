@@ -138,11 +138,17 @@ def main():
             print(f"Patient/{pid}  CR={cr}  SHR={shr}  changed_clinical={len(mine)}")
 
         if not DRY_RUN:
-            for rtype, rows in (("patient", pats), ("encounter", encs), ("observation", obs)):
-                latest = latest_changed(rows)
-                if latest is not None:
-                    advance(cur, rtype, latest)
-            conn.commit()
+            if fail == 0:
+                for rtype, rows in (("patient", pats), ("encounter", encs), ("observation", obs)):
+                    latest = latest_changed(rows)
+                    if latest is not None:
+                        advance(cur, rtype, latest)
+                conn.commit()
+            else:
+                # Do NOT advance the watermark while any push failed — the whole delta
+                # is retried next cycle (idempotent). Surfaces the failure loudly instead
+                # of silently dropping the records that didn't land.
+                print(f"  holding watermark: {fail} push(es) failed; delta will be retried next cycle")
         print(f"DONE  patients_touched={len(touched)} ok={ok} fail={fail}"
               f"  (Δ p={len(pats)} e={len(encs)} o={len(obs)}){'  [DRY_RUN]' if DRY_RUN else ''}")
 
