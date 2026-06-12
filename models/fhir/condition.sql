@@ -30,18 +30,20 @@ SELECT
               pd.concept_group, pd.concept_id, pd.answer_concept_id, pd.encounter_date))),
       'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                 'system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', pd.mspp_code))),
-      'clinicalStatus', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
-                'system', 'http://terminology.hl7.org/CodeSystem/condition-clinical', 'code', 'active'))),
+      'clinicalStatus', JSON_OBJECT(
+                'coding', JSON_ARRAY(JSON_OBJECT(
+                  'system', 'http://terminology.hl7.org/CodeSystem/condition-clinical',
+                  'code', 'active', 'display', 'Active')),
+                'text', 'Active'),
       'category', JSON_ARRAY(JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
                 'system', 'http://terminology.hl7.org/CodeSystem/condition-category',
-                'code', 'encounter-diagnosis')))),
+                'code', 'encounter-diagnosis', 'display', 'Encounter Diagnosis')))),
       'code', JSON_OBJECT(
                 'coding', JSON_ARRAY(JSON_OBJECT(
-                  'system', 'http://isanteplus.org/openmrs/concept',
-                  'code', CAST(COALESCE(pd.answer_concept_id, pd.concept_id) AS CHAR),
+                  'code', COALESCE(dc.uuid, RPAD(CAST(COALESCE(pd.answer_concept_id, pd.concept_id) AS CHAR), 36, 'A')),
                   'display', cn.name)),
                 'text', cn.name),
-      'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid)),
+      'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
       'recordedDate', REPLACE(CAST(pd.encounter_date AS CHAR), ' ', 'T')
     ),
     CASE WHEN enc.uuid IS NOT NULL
@@ -53,6 +55,8 @@ JOIN consolidated_db.person_openmrs per
   ON per.mspp_code = pd.mspp_code AND per.person_id = pd.patient_id
 LEFT JOIN consolidated_db.encounter_openmrs enc
   ON enc.mspp_code = pd.mspp_code AND enc.encounter_id = pd.encounter_id
+LEFT JOIN consolidated_db.concept dc
+  ON dc.concept_id = COALESCE(pd.answer_concept_id, pd.concept_id)
 LEFT JOIN consolidated_db.concept_name cn
   ON cn.concept_id = COALESCE(pd.answer_concept_id, pd.concept_id)
      AND cn.locale_preferred = 1 AND COALESCE(cn.voided, 0) = 0
