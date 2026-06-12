@@ -1,0 +1,46 @@
+{
+  "id": "medreq-058f3c800a7a533a5d278ff278903082",
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
+  "intent": "order",
+  "status": "active",
+  "subject": {
+    "type": "Patient",
+    "reference": "Patient/uuid-p-11106-11"
+  },
+  "requester": {
+    "type": "Practitioner",
+    "reference": "Practitioner/5"
+  },
+  "authoredOn": "2026-01-02T09:00:00",
+  "resourceType": "MedicationRequest",
+  "dosageInstruction": [
+    {
+      "text": "1 tablet twice daily",
+      "timing": {
+        "repeat": {
+          "boundsDuration": {
+            "code": "d",
+            "unit": "d",
+            "value": 30.0,
+            "system": "http://unitsofmeasure.org"
+          }
+        }
+      }
+    }
+  ],
+  "medicationCodeableConcept": {
+    "coding": [
+      {
+        "code": "1234",
+        "system": "http://isanteplus.org/openmrs/drug"
+      }
+    ]
+  }
+}

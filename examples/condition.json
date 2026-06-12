@@ -1,0 +1,50 @@
+{
+  "id": "cond-632ba2aceb0bafea83557e65cc3a7c3f",
+  "code": {
+    "text": "Tuberculosis",
+    "coding": [
+      {
+        "code": "117399AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "display": "Tuberculosis"
+      }
+    ]
+  },
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
+  "subject": {
+    "type": "Patient",
+    "reference": "Patient/uuid-p-11106-11"
+  },
+  "category": [
+    {
+      "coding": [
+        {
+          "code": "encounter-diagnosis",
+          "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+          "display": "Encounter Diagnosis"
+        }
+      ]
+    }
+  ],
+  "encounter": {
+    "reference": "Encounter/uuid-e-11106-1"
+  },
+  "recordedDate": "2026-01-02T09:00:00",
+  "resourceType": "Condition",
+  "clinicalStatus": {
+    "text": "Active",
+    "coding": [
+      {
+        "code": "active",
+        "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+        "display": "Active"
+      }
+    ]
+  }
+}

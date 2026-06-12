@@ -5,8 +5,17 @@
     {
       "resource": {
         "id": "uuid-p-11106-11",
+        "meta": {
+          "tag": [
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
+            }
+          ]
+        },
         "name": [
           {
+            "id": "uuid-n-11",
             "use": "official",
             "given": [
               "Jean"
@@ -18,19 +27,40 @@
         "gender": "male",
         "address": [
           {
+            "id": "uuid-a-11",
             "use": "home",
             "city": "Dessalines",
-            "line": [
-              "Anba Canal"
-            ],
             "state": "Artibonite",
-            "country": "Haiti"
+            "country": "Haiti",
+            "extension": [
+              {
+                "url": "http://fhir.openmrs.org/ext/address",
+                "extension": [
+                  {
+                    "url": "http://fhir.openmrs.org/ext/address#address1",
+                    "valueString": "Anba Canal"
+                  },
+                  {
+                    "url": "http://fhir.openmrs.org/ext/address#address2",
+                    "valueString": "Rue Lamartiniere"
+                  },
+                  {
+                    "url": "http://fhir.openmrs.org/ext/address#address3",
+                    "valueString": "3e Section"
+                  }
+                ]
+              }
+            ]
           }
         ],
         "birthDate": "1990-01-01",
         "identifier": [
           {
+            "id": "uuid-i-11",
             "use": "official",
+            "type": {
+              "text": "iSantePlus ID"
+            },
             "value": "ST00160",
             "system": "http://isanteplus.org/openmrs/fhir2/3-isanteplus-id"
           },
@@ -41,9 +71,18 @@
             },
             "value": "HT-00001830",
             "system": "http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code"
+          },
+          {
+            "use": "official",
+            "type": {
+              "text": "National FP ID"
+            },
+            "value": "HT-00001830",
+            "system": "http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code"
           }
         ],
-        "resourceType": "Patient"
+        "resourceType": "Patient",
+        "deceasedBoolean": false
       },
       "request": {
         "method": "PUT",
@@ -53,6 +92,19 @@
     {
       "resource": {
         "id": "uuid-e-11106-1",
+        "meta": {
+          "tag": [
+            {
+              "code": "encounter",
+              "system": "http://fhir.openmrs.org/ext/encounter-tag",
+              "display": "Encounter"
+            },
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
+            }
+          ]
+        },
         "class": {
           "code": "AMB",
           "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode"
@@ -78,14 +130,22 @@
           "text": "Weight (kg)",
           "coding": [
             {
-              "code": "5089",
-              "system": "http://isanteplus.org/openmrs/concept",
+              "code": "5089AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
               "display": "Weight (kg)"
+            }
+          ]
+        },
+        "meta": {
+          "tag": [
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
             }
           ]
         },
         "status": "final",
         "subject": {
+          "type": "Patient",
           "reference": "Patient/uuid-p-11106-11"
         },
         "encounter": {
@@ -104,31 +164,185 @@
     },
     {
       "resource": {
-        "id": "uuid-o-2",
+        "id": "uuid-al-1",
         "code": {
-          "text": "Prenatal care facility",
+          "text": "Penicillin",
           "coding": [
             {
-              "code": "163529",
-              "system": "http://isanteplus.org/openmrs/concept",
-              "display": "Prenatal care facility"
+              "code": "88AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "display": "Penicillin"
             }
           ]
         },
-        "status": "final",
-        "subject": {
+        "meta": {
+          "tag": [
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
+            }
+          ]
+        },
+        "note": [
+          {
+            "text": "Patient reports rash"
+          }
+        ],
+        "type": "allergy",
+        "patient": {
+          "type": "Patient",
           "reference": "Patient/uuid-p-11106-11"
         },
-        "encounter": {
-          "reference": "Encounter/uuid-e-11106-1"
+        "category": [
+          "medication"
+        ],
+        "reaction": [
+          {
+            "manifestation": [
+              {
+                "text": "Anaphylaxis",
+                "coding": [
+                  {
+                    "code": "512AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "recordedDate": "2026-01-02T09:10:00",
+        "resourceType": "AllergyIntolerance",
+        "clinicalStatus": {
+          "text": "Active",
+          "coding": [
+            {
+              "code": "active",
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+              "display": "Active"
+            }
+          ]
         },
-        "valueString": "Hopital Dessalines",
-        "resourceType": "Observation",
-        "effectiveDateTime": "2026-01-02T09:06:00"
+        "verificationStatus": {
+          "text": "Confirmed",
+          "coding": [
+            {
+              "code": "confirmed",
+              "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+              "display": "Confirmed"
+            }
+          ]
+        }
       },
       "request": {
         "method": "PUT",
-        "url": "Observation/uuid-o-2"
+        "url": "AllergyIntolerance/uuid-al-1"
+      }
+    },
+    {
+      "resource": {
+        "id": "cond-632ba2aceb0bafea83557e65cc3a7c3f",
+        "code": {
+          "text": "Tuberculosis",
+          "coding": [
+            {
+              "code": "117399AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "display": "Tuberculosis"
+            }
+          ]
+        },
+        "meta": {
+          "tag": [
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
+            }
+          ]
+        },
+        "subject": {
+          "type": "Patient",
+          "reference": "Patient/uuid-p-11106-11"
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "code": "encounter-diagnosis",
+                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                "display": "Encounter Diagnosis"
+              }
+            ]
+          }
+        ],
+        "encounter": {
+          "reference": "Encounter/uuid-e-11106-1"
+        },
+        "recordedDate": "2026-01-02T09:00:00",
+        "resourceType": "Condition",
+        "clinicalStatus": {
+          "text": "Active",
+          "coding": [
+            {
+              "code": "active",
+              "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              "display": "Active"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "Condition/cond-632ba2aceb0bafea83557e65cc3a7c3f"
+      }
+    },
+    {
+      "resource": {
+        "id": "medreq-058f3c800a7a533a5d278ff278903082",
+        "meta": {
+          "tag": [
+            {
+              "code": "11106",
+              "system": "http://sedish-haiti.org/fhir/mspp-site"
+            }
+          ]
+        },
+        "intent": "order",
+        "status": "active",
+        "subject": {
+          "type": "Patient",
+          "reference": "Patient/uuid-p-11106-11"
+        },
+        "requester": {
+          "type": "Practitioner",
+          "reference": "Practitioner/5"
+        },
+        "authoredOn": "2026-01-02T09:00:00",
+        "resourceType": "MedicationRequest",
+        "dosageInstruction": [
+          {
+            "text": "1 tablet twice daily",
+            "timing": {
+              "repeat": {
+                "boundsDuration": {
+                  "code": "d",
+                  "unit": "d",
+                  "value": 30.0,
+                  "system": "http://unitsofmeasure.org"
+                }
+              }
+            }
+          }
+        ],
+        "medicationCodeableConcept": {
+          "coding": [
+            {
+              "code": "1234",
+              "system": "http://isanteplus.org/openmrs/drug"
+            }
+          ]
+        }
+      },
+      "request": {
+        "method": "PUT",
+        "url": "MedicationRequest/medreq-058f3c800a7a533a5d278ff278903082"
       }
     }
   ]

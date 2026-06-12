@@ -1,0 +1,21 @@
+{
+  "id": "11106",
+  "name": "Hopital St. Michel",
+  "status": "active",
+  "address": {
+    "city": "Dessalines",
+    "state": "Artibonite",
+    "extension": [
+      {
+        "url": "http://fhir.openmrs.org/ext/address",
+        "extension": [
+          {
+            "url": "http://fhir.openmrs.org/ext/address#address3",
+            "valueString": "3e Section"
+          }
+        ]
+      }
+    ]
+  },
+  "resourceType": "Location"
+}

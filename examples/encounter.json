@@ -1,5 +1,18 @@
 {
   "id": "uuid-e-11106-1",
+  "meta": {
+    "tag": [
+      {
+        "code": "encounter",
+        "system": "http://fhir.openmrs.org/ext/encounter-tag",
+        "display": "Encounter"
+      },
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
   "class": {
     "code": "AMB",
     "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode"

@@ -4,14 +4,22 @@
     "text": "Weight (kg)",
     "coding": [
       {
-        "code": "5089",
-        "system": "http://isanteplus.org/openmrs/concept",
+        "code": "5089AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "display": "Weight (kg)"
+      }
+    ]
+  },
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
       }
     ]
   },
   "status": "final",
   "subject": {
+    "type": "Patient",
     "reference": "Patient/uuid-p-11106-11"
   },
   "encounter": {

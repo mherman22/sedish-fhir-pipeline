@@ -1,7 +1,16 @@
 {
   "id": "uuid-p-11106-11",
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
   "name": [
     {
+      "id": "uuid-n-11",
       "use": "official",
       "given": [
         "Jean"
@@ -13,19 +22,40 @@
   "gender": "male",
   "address": [
     {
+      "id": "uuid-a-11",
       "use": "home",
       "city": "Dessalines",
-      "line": [
-        "Anba Canal"
-      ],
       "state": "Artibonite",
-      "country": "Haiti"
+      "country": "Haiti",
+      "extension": [
+        {
+          "url": "http://fhir.openmrs.org/ext/address",
+          "extension": [
+            {
+              "url": "http://fhir.openmrs.org/ext/address#address1",
+              "valueString": "Anba Canal"
+            },
+            {
+              "url": "http://fhir.openmrs.org/ext/address#address2",
+              "valueString": "Rue Lamartiniere"
+            },
+            {
+              "url": "http://fhir.openmrs.org/ext/address#address3",
+              "valueString": "3e Section"
+            }
+          ]
+        }
+      ]
     }
   ],
   "birthDate": "1990-01-01",
   "identifier": [
     {
+      "id": "uuid-i-11",
       "use": "official",
+      "type": {
+        "text": "iSantePlus ID"
+      },
       "value": "ST00160",
       "system": "http://isanteplus.org/openmrs/fhir2/3-isanteplus-id"
     },
@@ -36,7 +66,16 @@
       },
       "value": "HT-00001830",
       "system": "http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code"
+    },
+    {
+      "use": "official",
+      "type": {
+        "text": "National FP ID"
+      },
+      "value": "HT-00001830",
+      "system": "http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code"
     }
   ],
-  "resourceType": "Patient"
+  "resourceType": "Patient",
+  "deceasedBoolean": false
 }

@@ -1,0 +1,69 @@
+{
+  "id": "uuid-al-1",
+  "code": {
+    "text": "Penicillin",
+    "coding": [
+      {
+        "code": "88AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "display": "Penicillin"
+      }
+    ]
+  },
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
+  "note": [
+    {
+      "text": "Patient reports rash"
+    }
+  ],
+  "type": "allergy",
+  "patient": {
+    "type": "Patient",
+    "reference": "Patient/uuid-p-11106-11"
+  },
+  "category": [
+    "medication"
+  ],
+  "reaction": [
+    {
+      "manifestation": [
+        {
+          "text": "Anaphylaxis",
+          "coding": [
+            {
+              "code": "512AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "recordedDate": "2026-01-02T09:10:00",
+  "resourceType": "AllergyIntolerance",
+  "clinicalStatus": {
+    "text": "Active",
+    "coding": [
+      {
+        "code": "active",
+        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical",
+        "display": "Active"
+      }
+    ]
+  },
+  "verificationStatus": {
+    "text": "Confirmed",
+    "coding": [
+      {
+        "code": "confirmed",
+        "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification",
+        "display": "Confirmed"
+      }
+    ]
+  }
+}

@@ -1,7 +1,16 @@
 {
   "id": "uuid-p-11106-12",
+  "meta": {
+    "tag": [
+      {
+        "code": "11106",
+        "system": "http://sedish-haiti.org/fhir/mspp-site"
+      }
+    ]
+  },
   "name": [
     {
+      "id": "uuid-n-12",
       "use": "official",
       "given": [
         "Marie"
@@ -15,10 +24,15 @@
   "birthDate": "1985-06-15",
   "identifier": [
     {
+      "id": "uuid-i-12",
       "use": "official",
+      "type": {
+        "text": "iSantePlus ID"
+      },
       "value": "ST00161",
       "system": "http://isanteplus.org/openmrs/fhir2/3-isanteplus-id"
     }
   ],
-  "resourceType": "Patient"
+  "resourceType": "Patient",
+  "deceasedBoolean": false
 }
