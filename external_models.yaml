@@ -221,6 +221,36 @@
     locale_preferred: INT
   gateway: mysql
 
+- name: '`consolidated_db`.`allergy_openmrs`'
+  columns:
+    allergy_id: INT
+    patient_id: INT
+    severity_concept_id: INT
+    coded_allergen: INT
+    non_coded_allergen: VARCHAR(255)
+    allergen_type: VARCHAR(50)
+    comment: VARCHAR(1024)
+    voided: INT
+    uuid: CHAR(38)
+    date_created: DATETIME
+    date_changed: DATETIME
+    date_updated: DATETIME
+    location_id: INT
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
+- name: '`consolidated_db`.`allergy_reaction_openmrs`'
+  columns:
+    allergy_reaction_id: INT
+    allergy_id: INT
+    reaction_concept_id: INT
+    reaction_non_coded: VARCHAR(255)
+    uuid: CHAR(38)
+    date_updated: DATETIME
+    location_id: INT
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
 # Derived iSantePlus denormalization (flattened per-patient summary; own PK
 # (patient_id, mspp_code, date_created), no person_id, nullable uuid). Column
 # names match the dump verbatim — incl. camelCase `maritalStatus`.

@@ -178,12 +178,9 @@ class FakeCursor:
         elif "from fhir.patient where fhir_id in" in s:
             self._result = [(fid, self.data["patients"][fid]) for fid in params
                             if fid in self.data["patients"]]
-        elif "from fhir.patient where changed_at" in s:
-            self._result = self.data["delta"]["patient"]
-        elif "from fhir.encounter where changed_at" in s:
-            self._result = self.data["delta"]["encounter"]
-        elif "from fhir.observation where changed_at" in s:
-            self._result = self.data["delta"]["observation"]
+        elif "where changed_at" in s and "from fhir." in s:
+            view = s.split("from fhir.", 1)[1].split()[0]   # patient / encounter / observation / …
+            self._result = self.data["delta"].get(view, [])
         else:
             self._result = []
     def fetchone(self): return self._result[0] if self._result else None
@@ -256,9 +253,9 @@ def test_main_warm_pushes_nothing_and_advances_nothing(monkeypatch):
     assert sent == []
     assert _advances(cur) == {}          # nothing to advance
     assert conn.committed is True        # commit still issued (no-op)
-    # it did query the delta for each resource type with the stored watermark
+    # it did query the delta for patient + each clinical view with the stored watermark
     delta_sqls = [s for s, _ in cur.executed if "where changed_at" in s.lower()]
-    assert len(delta_sqls) == 3
+    assert len(delta_sqls) == 1 + len(L.CLINICAL_VIEWS)
 
 
 def test_main_one_changed_obs_touches_only_its_patient(monkeypatch):
@@ -282,6 +279,19 @@ def test_main_one_changed_obs_touches_only_its_patient(monkeypatch):
     # only the observation watermark moved
     assert _advances(cur) == {"observation": DT2}
     assert conn.committed is True
+
+
+def test_main_pushes_a_new_clinical_view_allergy(monkeypatch):
+    # an AllergyIntolerance changed for an existing patient -> bundled + pushed, like enc/obs
+    allergy = json.dumps({"resourceType": "AllergyIntolerance", "id": "al1"})
+    data = {"watermark": {"patient": DT2, "encounter": DT2, "observation": DT2, "allergy_intolerance": DT0},
+            "patients": {"pA": _pat("pA")},
+            "delta": {"patient": [], "encounter": [], "observation": [],
+                      "allergy_intolerance": [("al1", "pA", allergy, DT2)]}}
+    sent, conn, cur = _run_main(monkeypatch, data)
+    assert [(m, u) for m, u, _, _ in sent] == [("PUT", f"{L.OPENCR_URL}/Patient/pA"), ("POST", L.SHR_URL)]
+    assert {e["resource"]["id"] for e in sent[1][3]["entry"]} == {"pA", "al1"}   # patient + allergy bundled
+    assert _advances(cur) == {"allergy_intolerance": DT2}
 
 
 def test_main_orders_patients_deterministically(monkeypatch):

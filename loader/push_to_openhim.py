@@ -37,6 +37,9 @@ OPENCR = (env("OPENCR_USER", "openshr"),      env("OPENCR_PASS", "openshr"))
 SHR    = (env("SHR_USER",    "shr-pipeline"), env("SHR_PASS",    "instant101"))
 DRY_RUN = env("DRY_RUN", "") not in ("", "0", "false")
 EPOCH = "1970-01-01 00:00:00"
+# patient-scoped clinical views to push (each carries fhir_id, patient_fhir_id, changed_at).
+# Add a resource = a SQLMesh model + an entry here.
+CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,observation,allergy_intolerance").split(",") if v.strip()]
 
 def _auth(c): return "Basic " + base64.b64encode(f"{c[0]}:{c[1]}".encode()).decode()
 
@@ -105,14 +108,15 @@ def main():
     conn = pymysql.connect(**FHIR_DB, autocommit=False)
     with conn.cursor() as cur:
         ensure_state(cur)
-        wm = {r: watermark(cur, r) for r in ("patient", "encounter", "observation")}
+        wm = {r: watermark(cur, r) for r in ["patient", *CLINICAL_VIEWS]}
 
-        pats = delta(cur, "patient",     "fhir_id, resource",                  wm["patient"])
-        encs = delta(cur, "encounter",   "fhir_id, patient_fhir_id, resource", wm["encounter"])
-        obs  = delta(cur, "observation", "fhir_id, patient_fhir_id, resource", wm["observation"])
+        pats = delta(cur, "patient", "fhir_id, resource", wm["patient"])
+        # each patient-scoped clinical view (encounter, observation, allergy_intolerance, …):
+        # adding a resource = a model + an entry in CLINICAL_VIEWS, nothing else here.
+        clinical = {v: delta(cur, v, "fhir_id, patient_fhir_id, resource", wm[v]) for v in CLINICAL_VIEWS}
 
         patient_by_id = index_patients(pats)
-        clin_by_pat = index_clinical(encs, obs)
+        clin_by_pat = index_clinical(*clinical.values())
         touched = set(patient_by_id) | set(clin_by_pat)
         # patients touched only via clinical: fetch their current Patient resource
         missing = [p for p in touched if p not in patient_by_id]
@@ -139,7 +143,7 @@ def main():
 
         if not DRY_RUN:
             if fail == 0:
-                for rtype, rows in (("patient", pats), ("encounter", encs), ("observation", obs)):
+                for rtype, rows in [("patient", pats), *clinical.items()]:
                     latest = latest_changed(rows)
                     if latest is not None:
                         advance(cur, rtype, latest)
@@ -149,8 +153,9 @@ def main():
                 # is retried next cycle (idempotent). Surfaces the failure loudly instead
                 # of silently dropping the records that didn't land.
                 print(f"  holding watermark: {fail} push(es) failed; delta will be retried next cycle")
+        deltas = "p=%d " % len(pats) + " ".join(f"{v}={len(rows)}" for v, rows in clinical.items())
         print(f"DONE  patients_touched={len(touched)} ok={ok} fail={fail}"
-              f"  (Δ p={len(pats)} e={len(encs)} o={len(obs)}){'  [DRY_RUN]' if DRY_RUN else ''}")
+              f"  (Δ {deltas}){'  [DRY_RUN]' if DRY_RUN else ''}")
 
 if __name__ == "__main__":
     main()
