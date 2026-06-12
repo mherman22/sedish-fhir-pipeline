@@ -42,15 +42,21 @@ SELECT
       'id', a.uuid,
       'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                 'system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', a.mspp_code))),
+      -- matches the OpenMRS fhir2 AllergyIntoleranceTranslator (type/verificationStatus hardcoded)
+      'type', 'allergy',
       'clinicalStatus', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
                 'system', 'http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical',
                 'code', 'active'))),
+      'verificationStatus', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
+                'system', 'http://terminology.hl7.org/CodeSystem/allergyintolerance-verification',
+                'code', 'confirmed'))),
       'category', JSON_ARRAY(CASE a.allergen_type
                                WHEN 'DRUG' THEN 'medication'
                                WHEN 'FOOD' THEN 'food'
                                WHEN 'ENVIRONMENT' THEN 'environment'
                                ELSE 'medication' END),
       'patient', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid)),
+      'recordedDate', REPLACE(CAST(a.date_created AS CHAR), ' ', 'T'),
       'code', JSON_OBJECT(
                 'coding', JSON_ARRAY(JSON_OBJECT(
                   'system', 'http://isanteplus.org/openmrs/concept',
@@ -58,7 +64,11 @@ SELECT
                   'display', cn.name)),
                 'text', COALESCE(cn.name, a.non_coded_allergen))
     ),
-    CASE WHEN r.arr IS NOT NULL THEN JSON_OBJECT('reaction', r.arr) ELSE JSON_OBJECT() END
+    JSON_MERGE_PATCH(
+      CASE WHEN r.arr IS NOT NULL THEN JSON_OBJECT('reaction', r.arr) ELSE JSON_OBJECT() END,
+      CASE WHEN a.comment IS NOT NULL
+           THEN JSON_OBJECT('note', JSON_ARRAY(JSON_OBJECT('text', a.comment))) ELSE JSON_OBJECT() END
+    )
   ) AS resource
 FROM consolidated_db.allergy_openmrs a
 JOIN consolidated_db.person_openmrs per
