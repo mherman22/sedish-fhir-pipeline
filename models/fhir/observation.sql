@@ -31,19 +31,17 @@ SELECT
         'status', 'final',
         'code', JSON_OBJECT(
                   'coding', JSON_ARRAY(JSON_OBJECT(
-                              'system', 'http://isanteplus.org/openmrs/concept',
-                              'code', CAST(o.concept_id AS CHAR),
+                              'code', COALESCE(qc.uuid, RPAD(CAST(o.concept_id AS CHAR), 36, 'A')),
                               'display', cn.name)),
                   'text', cn.name),
-        'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid)),
+        'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
         'effectiveDateTime', REPLACE(CAST(o.obs_datetime AS CHAR),' ','T')
       ),
       CASE
         WHEN o.value_numeric  IS NOT NULL THEN JSON_OBJECT('valueQuantity', JSON_OBJECT('value', o.value_numeric))
         WHEN o.value_coded    IS NOT NULL THEN JSON_OBJECT('valueCodeableConcept',
                                                JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
-                                                 'system', 'http://isanteplus.org/openmrs/concept',
-                                                 'code', CAST(o.value_coded AS CHAR)))))
+                                                 'code', COALESCE(vc.uuid, RPAD(CAST(o.value_coded AS CHAR), 36, 'A'))))))
         WHEN o.value_datetime IS NOT NULL THEN JSON_OBJECT('valueDateTime', REPLACE(CAST(o.value_datetime AS CHAR),' ','T'))
         WHEN o.value_text     IS NOT NULL THEN JSON_OBJECT('valueString', o.value_text)
         ELSE JSON_OBJECT()
@@ -58,6 +56,8 @@ JOIN consolidated_db.person_openmrs per
   ON per.mspp_code = o.mspp_code AND per.person_id = o.person_id
 LEFT JOIN consolidated_db.encounter_openmrs enc
   ON enc.mspp_code = o.mspp_code AND enc.encounter_id = o.encounter_id
+LEFT JOIN consolidated_db.concept qc ON qc.concept_id = o.concept_id
+LEFT JOIN consolidated_db.concept vc ON vc.concept_id = o.value_coded
 LEFT JOIN consolidated_db.concept_name cn
   ON cn.concept_id = o.concept_id AND cn.locale_preferred = 1 AND COALESCE(cn.voided, 0) = 0
 WHERE COALESCE(o.voided, 0) = 0
