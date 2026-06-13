@@ -163,6 +163,57 @@
     mspp_code: VARCHAR(10)
   gateway: mysql
 
+- name: '`consolidated_db`.`patient_identifier_type`'
+  columns:
+    patient_identifier_type_id: INT
+    name: VARCHAR(50)
+    description: TEXT
+    format: VARCHAR(255)
+    check_digit: INT
+    required: INT
+    retired: INT
+    uuid: CHAR(38)
+    synced: INT
+    synced_date: DATETIME
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
+- name: '`consolidated_db`.`site`'
+  columns:
+    mspp_code: VARCHAR(10)
+    commune: VARCHAR(255)
+    department: VARCHAR(255)
+    location_id: INT
+    name: VARCHAR(255)
+    section_communale: VARCHAR(255)
+    active: INT
+    active_ssp: INT
+    active_vih: INT
+  gateway: mysql
+
+- name: '`consolidated_db`.`visit_openmrs`'
+  columns:
+    visit_id: INT
+    patient_id: INT
+    visit_type_id: INT
+    date_started: DATETIME
+    date_stopped: DATETIME
+    location_id: INT
+    creator: INT
+    date_created: DATETIME
+    changed_by: INT
+    date_changed: DATETIME
+    voided: INT
+    voided_by: INT
+    date_voided: DATETIME
+    void_reason: VARCHAR(255)
+    uuid: CHAR(38)
+    synced: INT
+    synced_date: DATETIME
+    date_updated: DATETIME
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
 - name: '`consolidated_db`.`encounter_openmrs`'
   columns:
     encounter_id: INT
@@ -184,6 +235,42 @@
     synced: INT
     synced_date: DATETIME
     date_updated: DATETIME
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
+- name: '`consolidated_db`.`encounter_provider_openmrs`'
+  columns:
+    encounter_provider_id: INT
+    encounter_id: INT
+    provider_id: INT
+    encounter_role_id: INT
+    creator: INT
+    date_created: DATETIME
+    changed_by: INT
+    date_changed: DATETIME
+    voided: INT
+    date_voided: DATETIME
+    voided_by: INT
+    void_reason: VARCHAR(255)
+    uuid: CHAR(38)
+    synced: INT
+    synced_date: DATETIME
+    date_updated: DATETIME
+    location_id: INT
+    mspp_code: VARCHAR(10)
+  gateway: mysql
+
+- name: '`consolidated_db`.`encounter_type`'
+  columns:
+    encounter_type_id: INT
+    name: VARCHAR(50)
+    description: TEXT
+    retired: INT
+    uuid: CHAR(38)
+    changed_by: INT
+    date_changed: DATETIME
+    synced: INT
+    synced_date: DATETIME
     mspp_code: VARCHAR(10)
   gateway: mysql
 
