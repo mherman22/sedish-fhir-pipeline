@@ -21,28 +21,22 @@ SELECT
   CONCAT('medreq-', MD5(CONCAT_WS('|', pp.mspp_code, pp.encounter_id, pp.location_id, pp.drug_id))) AS fhir_id,
   per.uuid AS patient_fhir_id,
   COALESCE(pp.date_updated, pp.last_updated_date, '1970-01-01 00:00:00') AS changed_at,
-  JSON_MERGE_PATCH(
-    JSON_OBJECT(
-      'resourceType', 'MedicationRequest',
-      'id', CONCAT('medreq-', MD5(CONCAT_WS('|', pp.mspp_code, pp.encounter_id, pp.location_id, pp.drug_id))),
-      'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
-                'system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', pp.mspp_code))),
-      'status', 'active',
-      'intent', 'order',
-      'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
-      'authoredOn', REPLACE(CAST(COALESCE(pp.visit_date, pp.dispensation_date) AS CHAR), ' ', 'T'),
-      'medicationCodeableConcept', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
-                'system', 'http://isanteplus.org/openmrs/drug', 'code', CAST(pp.drug_id AS CHAR)))),
-      'dosageInstruction', JSON_ARRAY(JSON_OBJECT(
-                'text', pp.posology,
-                'timing', JSON_OBJECT('repeat', JSON_OBJECT('boundsDuration', JSON_OBJECT(
-                  'value', pp.number_day, 'unit', 'd',
-                  'system', 'http://unitsofmeasure.org', 'code', 'd')))))
-    ),
-    CASE WHEN pp.provider_id IS NOT NULL
-         THEN JSON_OBJECT('requester', JSON_OBJECT(
-                'reference', CONCAT('Practitioner/', CAST(pp.provider_id AS CHAR)), 'type', 'Practitioner'))
-         ELSE JSON_OBJECT() END
+  JSON_OBJECT(
+    'resourceType', 'MedicationRequest',
+    'id', CONCAT('medreq-', MD5(CONCAT_WS('|', pp.mspp_code, pp.encounter_id, pp.location_id, pp.drug_id))),
+    'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
+              'system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', pp.mspp_code))),
+    'status', 'active',
+    'intent', 'order',
+    'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
+    'authoredOn', REPLACE(CAST(COALESCE(pp.visit_date, pp.dispensation_date) AS CHAR), ' ', 'T'),
+    'medicationCodeableConcept', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
+              'system', 'http://isanteplus.org/openmrs/drug', 'code', CAST(pp.drug_id AS CHAR)))),
+    'dosageInstruction', JSON_ARRAY(JSON_OBJECT(
+              'text', pp.posology,
+              'timing', JSON_OBJECT('repeat', JSON_OBJECT('boundsDuration', JSON_OBJECT(
+                'value', pp.number_day, 'unit', 'd',
+                'system', 'http://unitsofmeasure.org', 'code', 'd')))))
   ) AS resource
 FROM consolidated_db.patient_prescription pp
 JOIN consolidated_db.person_openmrs per
