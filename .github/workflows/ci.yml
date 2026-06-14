@@ -16,6 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
       - run: uv sync
       - name: Lint
         run: uv run ruff check .
@@ -42,6 +43,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
       - run: uv sync
       - name: Create databases
         run: mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE digi_fhir; CREATE DATABASE digi_fhir_test;"
