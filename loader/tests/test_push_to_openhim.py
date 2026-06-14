@@ -4,7 +4,12 @@ These assert *exact* structures, call sequences, URLs, headers, request bodies,
 watermark-advance values, commit behaviour, ordering and the skip path — so any
 behavioural drift breaks a test.
 """
-import base64, io, json, sys, pathlib, datetime as dt
+import base64
+import datetime as dt
+import io
+import json
+import pathlib
+import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import push_to_openhim as L  # noqa: E402
@@ -349,7 +354,8 @@ def test_main_holds_watermark_when_a_push_fails(monkeypatch):
             "patients": {},
             "delta": {"patient": [("pA", _pat("pA"), DT1)], "encounter": [],
                       "observation": [("o1", "pA", _obs("o1"), DT2)]}}
-    send_result = lambda method: "ERR 500: []" if method == "PUT" else "200"
+    def send_result(method):
+        return "ERR 500: []" if method == "PUT" else "200"
     sent, conn, cur = _run_main(monkeypatch, data, send_result=send_result)
     assert sent                      # it did attempt the push
     assert _advances(cur) == {}      # but advanced nothing

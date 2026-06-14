@@ -28,7 +28,13 @@ Env (defaults = stock SEDISH swarm):
   SHR_URL/SHR_USER/SHR_PASS           SHR channel on OpenHIM  (Phase 2 only)
   DRY_RUN=1                           preview; don't POST and don't advance the watermark
 """
-import os, json, base64, time, collections, urllib.request, urllib.error
+import base64
+import collections
+import json
+import os
+import time
+import urllib.error
+import urllib.request
 import pymysql
 
 def env(k, d): return os.environ.get(k, d)
@@ -68,11 +74,13 @@ def send(url, method, cred, body, retries=3):
                 return str(r.status)
         except urllib.error.HTTPError as e:
             if 500 <= e.code < 600 and attempt < retries - 1:
-                time.sleep(2 ** attempt); continue
+                time.sleep(2 ** attempt)
+                continue
             return f"ERR {e.code}: {e.read().decode()[:160]}"
         except Exception as e:
             if attempt < retries - 1:
-                time.sleep(2 ** attempt); continue
+                time.sleep(2 ** attempt)
+                continue
             return f"EXC {e}"
 
 def ensure_state(cur):
@@ -136,11 +144,13 @@ def push_globals(cur):
             cur.execute(f"SELECT fhir_id, resource FROM fhir.{view}")
             rows = cur.fetchall()
         except Exception as e:  # noqa: BLE001 — view may not exist yet
-            print(f"  globals: skip {view} ({e})"); continue
+            print(f"  globals: skip {view} ({e})")
+            continue
         for _fid, res in rows:
             r = json.loads(res)
             st = send(f"{SHR_URL}/{r['resourceType']}/{r['id']}", "PUT", SHR, r)
-            ok += st in ("200", "201", "DRY_RUN"); pushed += 1
+            ok += st in ("200", "201", "DRY_RUN")
+            pushed += 1
     if pushed:
         print(f"  globals: pushed {ok}/{pushed} ({','.join(GLOBAL_VIEWS)})")
     return pushed - ok
@@ -203,7 +213,8 @@ def main():
         if missing:
             fmt = ",".join(["%s"] * len(missing))
             cur.execute(f"SELECT fhir_id, resource FROM fhir.patient WHERE fhir_id IN ({fmt})", missing)
-            for fid, res in cur.fetchall(): patient_by_id[fid] = json.loads(res)
+            for fid, res in cur.fetchall():
+                patient_by_id[fid] = json.loads(res)
 
         ok = fail = 0
         for pid in sorted(touched):
@@ -213,7 +224,8 @@ def main():
                 # watermark still advances (we won't retry). Safe because consolidated_db
                 # creates the person before its obs/encounter (FK order), so a missing
                 # patient here means intentionally excluded, not a not-yet-arrived race.
-                print(f"  skip {pid}: no Patient row (voided/absent)"); continue
+                print(f"  skip {pid}: no Patient row (voided/absent)")
+                continue
             cr = send(f"{OPENCR_URL}/Patient/{pid}", "PUT", OPENCR, patient)
             mine = clin_by_pat.get(pid, [])
             shr = send(SHR_URL, "POST", SHR, build_bundle(patient, mine))
