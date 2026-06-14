@@ -1,5 +1,7 @@
-test_patient_identity:
+test_patient_with_national_id:
   model: fhir.patient
+  vars:
+    national_id_system: http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code
   inputs:
     consolidated_db.patient_openmrs:
       format: csv
@@ -33,10 +35,10 @@ test_patient_identity:
         1,11,11106,ST00160,3,1,0
     consolidated_db.national_fingerprint_mapping:
       format: csv
-      columns: {mspp_code: varchar(20), patient_id: int}
+      columns: {mspp_code: varchar(20), patient_id: int, updated_at: datetime, created_at: datetime}
       rows: |
-        id,mspp_code,patient_id,national_id,statut
-        1,11106,11,HT-00001830,UNIQUE
+        id,mspp_code,patient_id,national_id,statut,updated_at,created_at
+        1,11106,11,HT-00001830,UNIQUE,2026-01-01 00:00:00,2026-01-01 00:00:00
     consolidated_db.person_attribute_openmrs:
       format: csv
       columns: {mspp_code: varchar(10), person_attribute_type_id: int, voided: int}
@@ -59,3 +61,73 @@ test_patient_identity:
       partial: true
       rows:
         - {mspp_code: '11106', patient_id: 11, fhir_id: uuid-p-11106-11}
+
+# A_REVOIR status: patient is loaded but receives no national FP ID.
+# fp_chg CTE still picks up the mapping row (any statut), advancing changed_at.
+test_patient_arevoir_no_national_id:
+  model: fhir.patient
+  vars:
+    national_id_system: http://isanteplus.org/openmrs/fhir2/6-biometrics-national-reference-code
+  inputs:
+    consolidated_db.patient_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        patient_id,mspp_code,voided
+        99,11202,0
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), gender: varchar(50), birthdate: date, dead: int, voided: int}
+      rows: |
+        person_id,mspp_code,gender,birthdate,dead,uuid,voided
+        99,11202,F,1985-03-15,0,uuid-p-11202-99,0
+    consolidated_db.person_name_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), preferred: int, voided: int}
+      rows: |
+        person_name_id,person_id,mspp_code,given_name,family_name,preferred,voided
+        2,99,11202,Marie,Desir,1,0
+    consolidated_db.person_address_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), preferred: int, voided: int}
+      rows: |
+        person_address_id,person_id,mspp_code,address1,city_village,country,preferred,voided
+    consolidated_db.patient_identifier_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), identifier_type: int, preferred: int, voided: int}
+      rows: |
+        patient_identifier_id,patient_id,mspp_code,identifier,identifier_type,preferred,voided
+        2,99,11202,PV00442,3,1,0
+    # A_REVOIR statut with updated_at — fp_chg CTE picks this up for changed_at tracking
+    # even though idents CTE filters it out (no national FP ID emitted).
+    consolidated_db.national_fingerprint_mapping:
+      format: csv
+      columns: {mspp_code: varchar(20), patient_id: int, updated_at: datetime, created_at: datetime}
+      rows: |
+        id,mspp_code,patient_id,national_id,statut,updated_at,created_at
+        2,11202,99,HT-99999999,A_REVOIR,2026-03-01 00:00:00,2026-01-01 00:00:00
+    consolidated_db.person_attribute_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), person_attribute_type_id: int, voided: int}
+      rows: |
+        person_attribute_id,person_id,mspp_code,value,person_attribute_type_id,voided
+    consolidated_db.person_attribute_type:
+      format: csv
+      columns: {mspp_code: varchar(10), person_attribute_type_id: int}
+      rows: |
+        person_attribute_type_id,mspp_code,name
+    ref.identifier_systems:
+      format: csv
+      rows: |
+        identifier_type,system,label
+        3,http://isanteplus.org/openmrs/fhir2/3-isanteplus-id,iSantePlus ID
+  outputs:
+    query:
+      partial: true
+      rows:
+        # Patient loads successfully with no national FP ID (A_REVOIR filtered in idents).
+        # changed_at driven by fp_chg.chg = 2026-03-01 (the mapping's updated_at).
+        - mspp_code: '11202'
+          patient_id: 99
+          fhir_id: uuid-p-11202-99
+          changed_at: '2026-03-01 00:00:00'
