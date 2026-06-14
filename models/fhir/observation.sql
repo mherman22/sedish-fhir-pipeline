@@ -5,6 +5,14 @@ MODEL (
   allow_partials true,
   start '2026-01-01',
   grain (mspp_code, obs_id),
+  columns (
+    mspp_code VARCHAR(10),
+    obs_id INT,
+    fhir_id VARCHAR(36),
+    patient_fhir_id VARCHAR(36),
+    changed_at DATETIME,
+    resource JSON
+  ),
   audits (assert_observation_has_subject)
 );
 

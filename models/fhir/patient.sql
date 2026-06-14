@@ -5,6 +5,13 @@ MODEL (
   allow_partials true,
   start '2026-01-01',
   grain (mspp_code, patient_id),
+  columns (
+    mspp_code VARCHAR(10),
+    patient_id INT,
+    fhir_id VARCHAR(36),
+    changed_at DATETIME,
+    resource JSON
+  ),
   audits (
     assert_patient_has_identifier,
     not_null(columns := (mspp_code, patient_id, fhir_id))

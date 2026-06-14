@@ -3,6 +3,10 @@ MODEL (
   kind FULL,
   cron '*/5 * * * *',
   grain (fhir_id),
+  columns (
+    fhir_id VARCHAR(255),
+    resource JSON
+  ),
   audits (not_null(columns := (fhir_id)))
 );
 
