@@ -474,7 +474,9 @@
     uuid: VARCHAR(250)
   gateway: mysql
 
-# NOT in the 2026-06-11 dump — declared from spec (pending CHARESS delivery).
+# Verified against the live consolidated_db DESCRIBE (2026-06-16): columns + names match;
+# 506 rows (400 UNIQUE / 106 DOUBLON). statut is an ENUM(UNIQUE,DOUBLON,A_REVOIR,ERREUR,
+# ERREUR_REGISTER,ERREUR_TEMPLATE); the model emits the fpnid only for UNIQUE/DOUBLON.
 - name: '`consolidated_db`.`national_fingerprint_mapping`'
   columns:
     id: INT
@@ -484,6 +486,6 @@
     m2sys_unique_id: VARCHAR(20)
     identify_score: INT
     statut: VARCHAR(30)
-    created_at: DATETIME
-    updated_at: DATETIME
+    created_at: TIMESTAMP
+    updated_at: TIMESTAMP
   gateway: mysql

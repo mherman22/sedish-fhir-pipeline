@@ -258,16 +258,19 @@ documentation/domains/      per-resource mapping notes
 
 ## Known Limitations
 
-All items below are pending upstream data delivery from CHARESS and do not block the pipeline:
+Verified against the live `consolidated_db` (`54.212.165.76`, 2026-06-16 — a ~522-patient test set):
 
-- **`national_fingerprint_mapping` absent from the DDL dump** — identity and DOUBLON logic is
-  fully implemented and tested via fixtures; inert until the table exists in a live
-  `consolidated_db`.
-- **No `concept_reference_*` table** — Observations use `concept_name` labels and local
-  concept codes. CIEL/SNOMED codings will be added once the reference table is confirmed.
-- **Dimension tables unpopulated** — `patient_identifier_type`, `encounter_type`, and
-  visit-type tables exist but contain no data; identifier system URIs and `Encounter.type`
-  codes cannot be finalised until reference rows are delivered.
-- **No `provider` table** — `MedicationRequest.requester` is omitted. The
-  `encounter_provider_openmrs` table carries per-link UUIDs, not per-provider UUIDs, making
-  stable Practitioner references impossible without a dedicated provider table.
+- **`national_fingerprint_mapping` is present and populated** — 506 rows (400 UNIQUE / 106
+  DOUBLON), columns match the model. The identity/DOUBLON + fpnid path runs against real data. ✅
+- **`patient_identifier_type` is empty, and every patient identifier is `identifier_type = 5`**
+  (e.g. `TST11001001013`). The seed `ref_identifier_systems.csv` assumes `5 = Code National`, but
+  with the dimension table empty this can't be confirmed from the DB — **CHARESS must confirm what
+  type 5 is** (and 3/6) before go-live, or OpenCR will index identifiers under the wrong system.
+- **`person_attribute_openmrs` is empty** — no phone data, so `Patient.telecom` is not emitted
+  (OpenCR Rule 10 won't fire). Harmless; telecom is conditional.
+- **`patient_isanteplus.mother_name` is 100% populated** — `Patient.contact[MTH]` is emitted for
+  every patient (feeds OpenCR Rule 11).
+- **No `concept_reference_*` table** — Observations use `concept_name` labels and local concept
+  codes. CIEL/SNOMED codings will be added once the reference table is confirmed.
+- **No `provider` table** — `MedicationRequest.requester` is omitted (`encounter_provider_openmrs`
+  carries per-link UUIDs, not per-provider UUIDs).
