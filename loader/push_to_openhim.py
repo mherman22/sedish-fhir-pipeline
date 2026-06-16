@@ -49,7 +49,7 @@ OPENCR_URL = env("OPENCR_URL", "http://openhim-core:5001/CR/fhir").rstrip("/")
 SHR_URL    = env("SHR_URL",    "http://openhim-core:5001/SHR/fhir").rstrip("/")
 # /CR and /SHR are both OpenHIM channels, so we authenticate as a single OpenHIM client.
 # The `consolidated` client (role 'emr') is allowed on both channels — one credential, not two.
-OPENHIM = (env("OPENHIM_USER", "consolidated"), env("OPENHIM_PASS", "consolidated"))
+OPENHIM = (env("OPENHIM_USER", "consolidated"), env("OPENHIM_PASS", ""))
 DRY_RUN = env("DRY_RUN", "") not in ("", "0", "false")
 # Phase 1 (default): push Patient identities to OpenCR only — no clinical, no SHR.
 MPI_ONLY = env("MPI_ONLY", "1") not in ("", "0", "false")
