@@ -31,7 +31,7 @@ def test_build_bundle_is_exactly_correct():
     patient = {"resourceType": "Patient", "id": "p1"}
     enc = {"resourceType": "Encounter", "id": "e1"}
     obs = {"resourceType": "Observation", "id": "o1"}
-    assert L.build_bundle(patient, [enc, obs]) == {
+    assert L.build_bundle([patient, enc, obs]) == {
         "resourceType": "Bundle",
         "type": "transaction",
         "entry": [
@@ -42,17 +42,16 @@ def test_build_bundle_is_exactly_correct():
     }
 
 
-def test_build_bundle_patient_first_and_order_preserved():
-    patient = {"resourceType": "Patient", "id": "p1"}
-    clin = [{"resourceType": "Observation", "id": f"o{i}"} for i in range(5)]
-    b = L.build_bundle(patient, clin)
-    assert b["entry"][0]["resource"] is patient
+def test_build_bundle_order_preserved():
+    resources = [{"resourceType": "Patient", "id": "p1"}] + \
+        [{"resourceType": "Observation", "id": f"o{i}"} for i in range(5)]
+    b = L.build_bundle(resources)
     assert [e["request"]["url"] for e in b["entry"]] == \
         ["Patient/p1", "Observation/o0", "Observation/o1", "Observation/o2", "Observation/o3", "Observation/o4"]
 
 
-def test_build_bundle_patient_only_single_entry():
-    b = L.build_bundle({"resourceType": "Patient", "id": "p1"}, [])
+def test_build_bundle_single_entry():
+    b = L.build_bundle([{"resourceType": "Patient", "id": "p1"}])
     assert len(b["entry"]) == 1 and b["entry"][0]["request"]["url"] == "Patient/p1"
 
 
@@ -226,64 +225,71 @@ def _enc(uuid): return json.dumps({"resourceType": "Encounter", "id": uuid})
 def _obs(uuid): return json.dumps({"resourceType": "Observation", "id": uuid})
 
 
-# identity/MPI delta rows are 5-tuples: (fhir_id, mspp_code, patient_id, resource_json, changed_at)
-def _pat_row(fhir_id, mspp, pid, changed): return (fhir_id, mspp, pid, _pat(fhir_id), changed)
+# patient delta rows are 3-tuples: (fhir_id, resource_json, changed_at)
+def _pat_row(fhir_id, changed): return (fhir_id, _pat(fhir_id), changed)
 
 
+def _bundle_ids(body):
+    """resourceType/id of every entry in a posted transaction bundle."""
+    return [e["request"]["url"] for e in body["entry"]]
+
+
+# Everything the loader sends is a POST of a transaction Bundle to the mediator channel; the
+# mediator (not the loader) splits Patient->OpenCR and clinical->SHR.
+
 # ======================================================================
-# Identity: Patient -> OpenCR via the source-key conditional upsert (paged)
+# Identity: changed patients -> bundle POSTed to the mediator
 # ======================================================================
-def test_identity_upserts_patient_on_source_key(monkeypatch):
+def test_identity_posts_patient_bundle_to_mediator(monkeypatch):
     data = {"watermark": {}, "patients": {},
-            "delta": {"patient": [_pat_row("pA", "11106", 11, DT1)]}}
+            "delta": {"patient": [_pat_row("pA", DT1)]}}
     sent, conn, cur = _run_main(monkeypatch, data, clinical_views=[], global_views=[])
-    # one call: conditional update on the source key (mspp-patient_id), not the uuid
-    assert [(m, u) for m, u, _, _ in sent] == [("PUT", L.cr_upsert_url("11106", 11))]
-    assert sent[0][1] == f"{L.OPENCR_URL}/Patient?identifier={L.SOURCE_KEY_SYSTEM}|11106-11"
-    assert sent[0][2] == L.OPENHIM and sent[0][3] == {"resourceType": "Patient", "id": "pA"}
+    # one POST to the mediator, authed as the OpenHIM client; bundle carries just the patient
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
+    assert sent[0][2] == L.OPENHIM
+    assert _bundle_ids(sent[0][3]) == ["Patient/pA"]
     assert _advances(cur) == {"patient": DT1}
     assert conn.committed is True
 
 
-def test_identity_orders_patients_by_fhir_id(monkeypatch):
+def test_identity_pages_into_one_bundle_ordered_by_fhir_id(monkeypatch):
     data = {"watermark": {}, "patients": {},
-            "delta": {"patient": [_pat_row("pB", "11106", 22, DT1), _pat_row("pA", "11106", 11, DT2)]}}
+            "delta": {"patient": [_pat_row("pB", DT1), _pat_row("pA", DT2)]}}
     sent, _, cur = _run_main(monkeypatch, data, clinical_views=[], global_views=[])
-    assert [u for m, u, _, _ in sent] == [
-        L.cr_upsert_url("11106", 11), L.cr_upsert_url("11106", 22)]   # sorted by fhir_id
-    assert _advances(cur) == {"patient": DT2}        # max changed_at across the batch
+    assert _bundle_ids(sent[0][3]) == ["Patient/pA", "Patient/pB"]   # sorted by fhir_id
+    assert _advances(cur) == {"patient": DT2}        # max changed_at across the page
 
 
-def test_identity_holds_watermark_on_cr_failure(monkeypatch):
-    data = {"watermark": {}, "patients": {}, "delta": {"patient": [_pat_row("pA", "11106", 11, DT1)]}}
+def test_identity_holds_watermark_on_failure(monkeypatch):
+    data = {"watermark": {}, "patients": {}, "delta": {"patient": [_pat_row("pA", DT1)]}}
     sent, conn, cur = _run_main(monkeypatch, data, send_result="ERR 500: []",
                                 clinical_views=[], global_views=[])
-    assert sent                          # it attempted the CR upsert
+    assert sent                          # it attempted the POST
     assert _advances(cur) == {}          # but advanced nothing
     assert conn.committed is False       # and did not commit (delta retried next cycle)
 
 
-def test_identity_dry_run_pushes_but_does_not_advance(monkeypatch):
-    data = {"watermark": {}, "patients": {}, "delta": {"patient": [_pat_row("pA", "11106", 11, DT1)]}}
+def test_identity_dry_run_posts_but_does_not_advance(monkeypatch):
+    data = {"watermark": {}, "patients": {}, "delta": {"patient": [_pat_row("pA", DT1)]}}
     sent, conn, cur = _run_main(monkeypatch, data, dry_run=True, clinical_views=[], global_views=[])
-    assert [(m, u) for m, u, _, _ in sent] == [("PUT", L.cr_upsert_url("11106", 11))]
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
     assert _advances(cur) == {} and conn.committed is False
 
 
 def test_identity_only_when_clinical_views_empty(monkeypatch):
     # CLINICAL_VIEWS empty => identity-only: clinical deltas are never even queried.
     data = {"watermark": {}, "patients": {},
-            "delta": {"patient": [_pat_row("pA", "11106", 11, DT1)],
+            "delta": {"patient": [_pat_row("pA", DT1)],
                       "encounter": [("e1", "pA", _enc("e1"), DT2)]}}
     sent, _, cur = _run_main(monkeypatch, data, clinical_views=[], global_views=[])
-    assert [(m, u) for m, u, _, _ in sent] == [("PUT", L.cr_upsert_url("11106", 11))]
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
     delta_sqls = [s for s, _ in cur.executed if "where changed_at" in s.lower()]
     assert len(delta_sqls) == 1                      # patient only — clinical views never queried
     assert "from fhir.patient" in delta_sqls[0].lower()
 
 
 # ======================================================================
-# Clinical: encounter/observation/… -> SHR transaction bundle per patient
+# Clinical: changed clinical grouped per patient -> bundle(patient + clinical) POSTed to mediator
 # ======================================================================
 def test_clinical_bundles_changed_clinical_per_patient(monkeypatch):
     # no patient delta: the patient is fetched by id purely as the bundle's reference target
@@ -294,40 +300,36 @@ def test_clinical_bundles_changed_clinical_per_patient(monkeypatch):
                       "observation": [("o1", "pA", _obs("o1"), DT2)]}}
     sent, conn, cur = _run_main(monkeypatch, data,
                                 clinical_views=["encounter", "observation"], global_views=[])
-    # one SHR POST, no CR call (no patient changed); same OpenHIM client; patient first in the bundle
-    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.SHR_URL)]
+    # one POST to the mediator; patient first, then its clinical (mediator does the CR/SHR split)
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
     assert sent[0][2] == L.OPENHIM
-    assert sent[0][3]["entry"] == [
-        {"resource": {"resourceType": "Patient", "id": "pA"},     "request": {"method": "PUT", "url": "Patient/pA"}},
-        {"resource": {"resourceType": "Encounter", "id": "e1"},   "request": {"method": "PUT", "url": "Encounter/e1"}},
-        {"resource": {"resourceType": "Observation", "id": "o1"}, "request": {"method": "PUT", "url": "Observation/o1"}},
-    ]
+    assert _bundle_ids(sent[0][3]) == ["Patient/pA", "Encounter/e1", "Observation/o1"]
     assert any("from fhir.patient where fhir_id in" in s.lower() for s, _ in cur.executed)
     assert _advances(cur) == {"encounter": DT1, "observation": DT2}
     assert conn.committed is True
 
 
 def test_clinical_only_bundles_patients_whose_clinical_changed(monkeypatch):
-    # obs changed for pA only; pB unchanged -> only pA is bundled to the SHR
+    # obs changed for pA only; pB unchanged -> only pA is bundled
     data = {"watermark": {"observation": DT0},
             "patients": {"pA": _pat("pA"), "pB": _pat("pB")},
             "delta": {"observation": [("o9", "pA", _obs("o9"), DT2)]}}
     sent, _, cur = _run_main(monkeypatch, data, clinical_views=["observation"], global_views=[])
-    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.SHR_URL)]
-    assert {e["resource"]["id"] for e in sent[0][3]["entry"]} == {"pA", "o9"}
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
+    assert set(_bundle_ids(sent[0][3])) == {"Patient/pA", "Observation/o9"}
     assert _advances(cur) == {"observation": DT2}
 
 
 def test_clinical_pushes_a_new_view_allergy(monkeypatch):
-    # an AllergyIntolerance changed for an existing patient -> bundled + pushed, like enc/obs
+    # an AllergyIntolerance changed for an existing patient -> bundled + posted, like enc/obs
     allergy = json.dumps({"resourceType": "AllergyIntolerance", "id": "al1"})
     data = {"watermark": {"allergy_intolerance": DT0},
             "patients": {"pA": _pat("pA")},
             "delta": {"allergy_intolerance": [("al1", "pA", allergy, DT2)]}}
     sent, _, cur = _run_main(monkeypatch, data,
                              clinical_views=["allergy_intolerance"], global_views=[])
-    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.SHR_URL)]
-    assert {e["resource"]["id"] for e in sent[0][3]["entry"]} == {"pA", "al1"}   # patient + allergy
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
+    assert set(_bundle_ids(sent[0][3])) == {"Patient/pA", "AllergyIntolerance/al1"}
     assert _advances(cur) == {"allergy_intolerance": DT2}
 
 
@@ -336,43 +338,43 @@ def test_clinical_skips_patient_with_no_row(monkeypatch):
     data = {"watermark": {"observation": DT0}, "patients": {},
             "delta": {"observation": [("oX", "pX", _obs("oX"), DT2)]}}
     sent, conn, cur = _run_main(monkeypatch, data, clinical_views=["observation"], global_views=[])
-    assert sent == []                    # nothing pushed (can't bundle a patient we don't have)
+    assert sent == []                    # nothing posted (can't bundle a patient we don't have)
     # intended: a skipped (voided/absent) patient's clinical watermark still advances,
     # so it is NOT retried forever (consolidated_db creates person before obs, FK order).
     assert _advances(cur) == {"observation": DT2}
     assert conn.committed is True
 
 
-def test_clinical_holds_watermark_on_shr_failure(monkeypatch):
+def test_clinical_holds_watermark_on_failure(monkeypatch):
     data = {"watermark": {"observation": DT0}, "patients": {"pA": _pat("pA")},
             "delta": {"observation": [("o1", "pA", _obs("o1"), DT2)]}}
     sent, conn, cur = _run_main(monkeypatch, data, send_result="ERR 500: []",
                                 clinical_views=["observation"], global_views=[])
-    assert sent                          # it attempted the SHR POST
+    assert sent                          # it attempted the POST
     assert _advances(cur) == {}          # but advanced nothing
     assert conn.committed is False
 
 
 # ======================================================================
-# Routing: identity + clinical + globals together, one cycle, no mode flag
+# A full cycle: identity + clinical + globals, all POSTed to the mediator
 # ======================================================================
-def test_routing_identity_to_cr_and_clinical_to_shr_in_one_run(monkeypatch):
+def test_identity_and_clinical_both_post_in_one_run(monkeypatch):
     data = {"watermark": {},
             "patients": {"pA": _pat("pA")},
-            "delta": {"patient": [_pat_row("pA", "11106", 11, DT1)],
+            "delta": {"patient": [_pat_row("pA", DT1)],
                       "encounter": [("e1", "pA", _enc("e1"), DT1)],
                       "observation": [("o1", "pA", _obs("o1"), DT2)]}}
     sent, conn, cur = _run_main(monkeypatch, data,
                                 clinical_views=["encounter", "observation"], global_views=[])
-    # identity first (source-key upsert -> CR), then the clinical bundle -> SHR
-    assert [(m, u) for m, u, _, _ in sent] == [
-        ("PUT", L.cr_upsert_url("11106", 11)), ("POST", L.SHR_URL)]
-    assert {e["resource"]["id"] for e in sent[1][3]["entry"]} == {"pA", "e1", "o1"}
+    # identity bundle first, then the clinical bundle — both to the mediator
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL), ("POST", L.MEDIATOR_URL)]
+    assert _bundle_ids(sent[0][3]) == ["Patient/pA"]
+    assert set(_bundle_ids(sent[1][3])) == {"Patient/pA", "Encounter/e1", "Observation/o1"}
     assert _advances(cur) == {"patient": DT1, "encounter": DT1, "observation": DT2}
     assert conn.committed is True
 
 
-def test_routing_warm_pushes_nothing(monkeypatch):
+def test_warm_posts_nothing(monkeypatch):
     data = {"watermark": {"patient": DT2, "encounter": DT2, "observation": DT2},
             "patients": {}, "delta": {"patient": [], "encounter": [], "observation": []}}
     sent, _, cur = _run_main(monkeypatch, data,
@@ -384,11 +386,11 @@ def test_routing_warm_pushes_nothing(monkeypatch):
     assert len(delta_sqls) == 1 + 2
 
 
-def test_routing_globals_go_to_shr_only(monkeypatch):
-    # a global resource (Location) is PUT to the SHR by resourceType/id, never to OpenCR
+def test_globals_post_bundle_to_mediator(monkeypatch):
+    # global resources (Location) are bundled and POSTed to the mediator (which routes them to SHR)
     loc = json.dumps({"resourceType": "Location", "id": "11106"})
     data = {"watermark": {}, "patients": {}, "delta": {"patient": []},
             "globals": {"location": [("11106", loc)]}}
     sent, _, _ = _run_main(monkeypatch, data, clinical_views=[], global_views=["location"])
-    assert ("PUT", f"{L.SHR_URL}/Location/11106") in [(m, u) for m, u, _, _ in sent]
-    assert all("/CR/" not in u for m, u, _, _ in sent)
+    assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
+    assert _bundle_ids(sent[0][3]) == ["Location/11106"]

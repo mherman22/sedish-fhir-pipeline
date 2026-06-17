@@ -39,16 +39,18 @@ servers, so SQLMesh can't run there. This pipeline sits between Consolidé and S
    has the source locally. Needs only read-only `SELECT` on Consolidé.
 2. **Transform** — SQLMesh models read the local `consolidated_db` copy and emit FHIR R4 JSON
    for each patient (and, in Phase 2, their clinical record), writing to a local `fhir` schema.
-3. **Load** — a Python loader pushes changed records through OpenHIM, routing by resource type
-   (the type is the routing decision — no mode flag):
-   - **OpenCR** receives patient identity (demographics, per-site MRNs, national fingerprint
-     ID) and performs cross-site deduplication into golden records.
-   - **SHR** (HAPI FHIR) receives the clinical record (Encounters, Observations, Conditions,
-     Allergies, Medications) linked to the same patient.
+3. **Load** — a Python loader computes what changed (per-resource watermarks) and POSTs FHIR
+   transaction Bundles to a single OpenHIM channel, `/consolidated/fhir`. It does **not** split
+   CR/SHR itself — the [`fhir-router-mediator`](https://github.com/mherman22/fhir-router-mediator)
+   routes each bundle by resource type:
+   - **Patient → OpenCR** — identity; OpenCR de-duplicates across sites into golden records.
+   - **clinical → SHR** (HAPI FHIR) — Encounters, Observations, Conditions, Allergies,
+     MedicationRequests, linked to the same patient.
 
-   Both run every cycle off their own watermarks, so one deployment feeds identity to OpenCR and
-   clinical to the SHR at once. To run identity-only (e.g. before the SHR is validated), set
-   `CLINICAL_VIEWS=` (empty) — no redeploy of logic, just config.
+   Identity and clinical run every cycle off their own watermarks: a demographics-only change
+   goes to OpenCR only; a clinical change carries the patient (as the SHR's reference target).
+   To run identity-only (e.g. before the SHR is validated), set `CLINICAL_VIEWS=` (empty) — just
+   config, no redeploy.
 
 This repo covers *sync*, *transform*, and *load*. The *extract* — replicating site data into
 Consolidé's `consolidated_db` — is the Consolidé server's responsibility.
@@ -69,7 +71,9 @@ Full architecture diagram: [SEDISH / Roaming Care architecture](https://www.canv
                                          local MySQL: consolidated_db copy + fhir output
                                                     │  ② SQLMesh models  consolidated_db → fhir.*
                                                     │  ③ loader/push_to_openhim.py
-                                                    └──────────────────────────────▶ OpenHIM
+                                                    │     POST bundles → /consolidated/fhir
+                                                    ▼
+                                         OpenHIM → fhir-router mediator (splits by type)
                                                                           │
                                                       ┌───────────────────┴────────────────────┐
                                                       ▼                                        ▼
@@ -99,7 +103,7 @@ single golden record, and the SHR re-points all clinical references onto it.
 | Python ≥ 3.11 | `uv` recommended for dependency management |
 | Consolidé MySQL ≥ 8.0 | **Read-only** `SELECT` on `consolidated_db` (the external source) |
 | Local MySQL ≥ 8.0 | Writable — holds the synced `consolidated_db` copy + the `fhir` output/state (`--sql-mode=` for legacy zero-dates) |
-| OpenHIM | Channels `/CR/fhir` and `/SHR/fhir` configured with client credentials |
+| OpenHIM | The `fhir-router` mediator on channel `/consolidated/fhir` (it forwards to `/CR/fhir` + `/SHR/fhir`) |
 
 ---
 
@@ -147,10 +151,9 @@ The **sync** reads Consolidé and the **loader/transform** read+write the local 
 | `SRC_DB` | `consolidated_db` | source schema on Consolidé |
 | `FHIR_DB_HOST` / `PORT` / `USER` / `PASS` | — | the **local** MySQL SQLMesh reads (synced copy) + writes (`fhir`) |
 | `FHIR_DB_NAME` | `fhir` | local output schema |
-| `OPENCR_URL` | `http://openhim-core:5001/CR/fhir` | OpenHIM channel for OpenCR |
-| `SHR_URL` | `http://openhim-core:5001/SHR/fhir` | OpenHIM channel for the SHR |
-| `OPENHIM_USER` / `OPENHIM_PASS` | `consolidated` | one OpenHIM client (role `emr`) for both channels |
-| `CLINICAL_VIEWS` | `encounter,observation,allergy_intolerance,condition,medication_request` | patient-scoped views bundled to the SHR; set empty for identity-only |
+| `MEDIATOR_URL` | `http://openhim-core:5001/consolidated/fhir` | OpenHIM channel the `fhir-router` mediator serves (it splits CR/SHR) |
+| `OPENHIM_USER` / `OPENHIM_PASS` | `consolidated` | OpenHIM client (role `emr`) used for the mediator channel |
+| `CLINICAL_VIEWS` | `encounter,observation,allergy_intolerance,condition,medication_request` | patient-scoped views bundled per patient; set empty for identity-only |
 | `DRY_RUN` | `0` | `1` = preview changes without writing to OpenHIM |
 | `INTERVAL` | `30` | Poll interval in seconds (continuous mode) |
 
@@ -198,8 +201,8 @@ python loader/push_to_openhim.py
 ```
 
 The loader compares each row's `changed_at` against a per-resource high-water mark in
-`loader_state` and issues `PUT` requests only for records that have changed. Both stages are
-**idempotent** — re-running is always safe.
+`loader_state` and POSTs transaction Bundles (PUT-by-id entries) to the mediator only for
+records that have changed. Both stages are **idempotent** — re-running is always safe.
 
 ### 4. Verify
 

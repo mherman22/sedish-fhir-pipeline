@@ -1,38 +1,30 @@
 #!/usr/bin/env python3
-"""Load the FHIR that SQLMesh produced into SEDISH, via OpenHIM — incrementally.
+"""Push the FHIR that SQLMesh produced into SEDISH via the fhir-router mediator — incrementally.
 
-Each run pushes only what changed since the last run. The `fhir.*` models carry a
-`changed_at` column (latest consolidated-server write time); this loader keeps a
-per-resource high-water mark in its own state table and, each cycle:
+The loader no longer splits CR/SHR itself. It computes what changed (a per-resource high-water
+mark over the `changed_at` column the fhir.* models carry) and POSTs FHIR transaction Bundles to
+one OpenHIM channel — `/consolidated/fhir` — where the fhir-router mediator routes them:
+Patient -> OpenCR (identity), clinical -> SHR, de-duping by resourceType/id.
 
-  1. reads patients / encounters / observations with changed_at > last watermark
-  2. routes by resource type — no mode flag, the type IS the routing decision:
-       IDENTITY  Patient   -> PUT {OPENCR_URL}/Patient?identifier=<src-key>   (OpenCR / MPI)
-       CLINICAL  enc/obs/… -> POST {SHR_URL}  transaction Bundle per patient  (SHR)
-       GLOBAL    location  -> PUT {SHR_URL}/{type}/{id}                        (SHR)
-  3. advances each resource's watermark to the max changed_at it processed
+Each cycle:
+  1. identity  — page changed patients -> POST a bundle of patients      (mediator -> OpenCR)
+  2. clinical  — changed enc/obs/... grouped per patient -> POST a bundle
+                 (patient + its changed clinical)                        (mediator -> OpenCR + SHR)
+  3. globals   — changed reference resources (Location, ...) -> POST a bundle  (mediator -> SHR)
+  4. advance each resource's watermark to the max changed_at it processed (only on full success)
 
-Identity and clinical run every cycle off their OWN watermarks, so a single deployment
-sends demographics to OpenCR and clinical to the SHR at the same time — you never redeploy
-to "switch modes." A patient goes to the SHR when its clinical changes (not when only its
-demographics change: demographics live in OpenCR, not the SHR). OpenCR de-dups identities;
-the SHR re-points clinical refs onto the golden record. Idempotent — re-runs and overlaps
-converge. First run (watermark epoch) pushes everything, i.e. the initial load.
-
-Identity is paged (the ~2.39M initial load won't fit in memory) and upserts on the source
-key (mspp_code+patient_id) per the CHARESS spec. To run identity-only (e.g. a go-live where
-the SHR isn't validated yet), set CLINICAL_VIEWS= (empty) — no clinical is read or pushed;
-no redeploy of logic, just config.
+Idempotent: bundles PUT by id, so re-runs and overlaps converge. First run (epoch watermark)
+pushes everything (the initial load). Identity is paged so the ~2.39M initial load fits in memory.
+Clinical runs off its own watermarks: a patient reaches the SHR when its clinical changes (a
+demographics-only change goes to OpenCR only).
 
 Env (defaults = stock SEDISH swarm):
   FHIR_DB_HOST/PORT/USER/PASS/NAME    where SQLMesh wrote the fhir.* views (NAME=fhir)
   STATE_DB                            isolated db for the watermark table (default loader_state)
-  OPENHIM_USER/OPENHIM_PASS           OpenHIM client basic-auth — ONE client for both channels
-                                      (default `consolidated`, role emr, allowed on /CR and /SHR)
-  OPENCR_URL                          CR channel on OpenHIM (identity / MPI)
-  SHR_URL                             SHR channel on OpenHIM (clinical + globals)
-  CLINICAL_VIEWS                      patient-scoped clinical views to bundle to the SHR
-                                      (empty = identity-only)
+  MEDIATOR_URL                        OpenHIM channel the fhir-router mediator serves
+  OPENHIM_USER/OPENHIM_PASS           OpenHIM client basic-auth (default `consolidated`, role emr)
+  CLINICAL_VIEWS                      patient-scoped clinical views to bundle (empty = identity-only)
+  GLOBAL_VIEWS                        non-patient-scoped reference views (Location, ...)
   DRY_RUN=1                           preview; don't POST and don't advance the watermark
 """
 import base64
@@ -49,25 +41,19 @@ def env(k, d): return os.environ.get(k, d)
 FHIR_DB = dict(host=env("FHIR_DB_HOST", "fhir-mysql"), port=int(env("FHIR_DB_PORT", "3306")),
                user=env("FHIR_DB_USER", "root"), password=env("FHIR_DB_PASS", "root"),
                database=env("FHIR_DB_NAME", "fhir"))
-STATE_DB   = env("STATE_DB", "loader_state")
-OPENCR_URL = env("OPENCR_URL", "http://openhim-core:5001/CR/fhir").rstrip("/")
-SHR_URL    = env("SHR_URL",    "http://openhim-core:5001/SHR/fhir").rstrip("/")
-# /CR and /SHR are both OpenHIM channels, so we authenticate as a single OpenHIM client.
-# The `consolidated` client (role 'emr') is allowed on both channels — one credential, not two.
+STATE_DB     = env("STATE_DB", "loader_state")
+# Single endpoint: the fhir-router mediator's OpenHIM channel. It owns CR/SHR routing + dedupe.
+MEDIATOR_URL = env("MEDIATOR_URL", "http://openhim-core:5001/consolidated/fhir").rstrip("/")
+# The mediator's channel is an OpenHIM channel; authenticate as the `consolidated` client (role emr).
 OPENHIM = (env("OPENHIM_USER", "consolidated"), env("OPENHIM_PASS", "consolidated"))
 DRY_RUN = env("DRY_RUN", "") not in ("", "0", "false")
-# Idempotency key per the CHARESS spec: OpenCR upserts the source record on the source key
-# (mspp_code+patient_id). Must match the `source_key_system` the patient model stamps, and be
-# listed in OpenCR's `internalid` systems. Requires OpenCR conditional-update support.
-SOURCE_KEY_SYSTEM = env("SOURCE_KEY_SYSTEM", "http://sedish-haiti.org/fhir/source-key")
 EPOCH = "1970-01-01 00:00:00"
-# Phase 1 processes patients in pages to avoid OOM on the ~2.39M patient initial load.
+# Page patients to avoid OOM on the ~2.39M patient initial load.
 BATCH_SIZE = int(env("BATCH_SIZE", "500"))
-# patient-scoped clinical views to push (each carries fhir_id, patient_fhir_id, changed_at).
-# Add a resource = a SQLMesh model + an entry here.
+# patient-scoped clinical views (each carries fhir_id, patient_fhir_id, changed_at).
+# Add a resource = a SQLMesh model + an entry here. Empty => identity-only.
 CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,observation,allergy_intolerance,condition,medication_request").split(",") if v.strip()]
-# global (non-patient-scoped) resources: pushed to the SHR directly (not bundled per
-# patient, not enrolled in OpenCR). Small reference resources, re-pushed each cycle (idempotent).
+# global (non-patient-scoped) reference resources, re-pushed each cycle (idempotent).
 GLOBAL_VIEWS = [v.strip() for v in env("GLOBAL_VIEWS", "location").split(",") if v.strip()]
 
 def _auth(c): return "Basic " + base64.b64encode(f"{c[0]}:{c[1]}".encode()).decode()
@@ -122,18 +108,11 @@ def delta_page(cur, view, cols, since, limit, offset):
     return cur.fetchall()
 
 # --- pure helpers (no I/O; unit-tested in loader/tests) -------------------
-def build_bundle(patient, clinical):
-    """FHIR transaction Bundle: patient + its clinical, each PUT by resourceType/id."""
+def build_bundle(resources):
+    """FHIR transaction Bundle: each resource PUT by resourceType/id. The mediator splits it."""
     return {"resourceType": "Bundle", "type": "transaction",
             "entry": [{"resource": r, "request": {"method": "PUT", "url": f"{r['resourceType']}/{r['id']}"}}
-                      for r in [patient] + clinical]}
-
-def cr_upsert_url(mspp_code, patient_id):
-    """FHIR conditional update on the source key — the CHARESS idempotency contract:
-    PUT /Patient?identifier=<source_key_system>|<mspp_code>-<patient_id>. OpenCR upserts the
-    source record by this key (0 matches -> create, 1 -> update), so re-runs and the parallel
-    real-time feed converge without duplicating the source record."""
-    return f"{OPENCR_URL}/Patient?identifier={SOURCE_KEY_SYSTEM}|{mspp_code}-{patient_id}"
+                      for r in resources]}
 
 def index_clinical(*row_groups):
     """rows (fhir_id, patient_fhir_id, resource_json, changed_at) -> {patient_fhir_id: [resource_dict]}."""
@@ -147,48 +126,28 @@ def latest_changed(rows):
     """max changed_at (last tuple element) across rows, or None when empty."""
     return max((r[-1] for r in rows), default=None)
 
-def push_globals(cur):
-    """Push global (non-patient-scoped) resources straight to the SHR by id. Idempotent;
-    re-pushed each cycle (these tables are small reference data, often without a change
-    timestamp). Returns the failure count. Globals never go to OpenCR."""
-    pushed = ok = 0
-    for view in GLOBAL_VIEWS:
-        try:
-            cur.execute(f"SELECT fhir_id, resource FROM fhir.{view}")
-            rows = cur.fetchall()
-        except Exception as e:  # noqa: BLE001 — view may not exist yet
-            print(f"  globals: skip {view} ({e})")
-            continue
-        for _fid, res in rows:
-            r = json.loads(res)
-            st = send(f"{SHR_URL}/{r['resourceType']}/{r['id']}", "PUT", OPENHIM, r)
-            ok += st in ("200", "201", "DRY_RUN")
-            pushed += 1
-    if pushed:
-        print(f"  globals: pushed {ok}/{pushed} ({','.join(GLOBAL_VIEWS)})")
-    return pushed - ok
+def post_bundle(resources):
+    """POST a transaction Bundle of `resources` to the mediator channel. Empty -> no-op '200'."""
+    if not resources:
+        return "200"
+    return send(MEDIATOR_URL, "POST", OPENHIM, build_bundle(resources))
 
 def push_identity(cur, conn):
-    """Patient -> OpenCR. Paged (the ~2.39M initial load won't fit in memory) and upserted on
-    the source key (mspp_code+patient_id) per the CHARESS spec, so re-runs and the parallel
-    real-time feed converge without duplicating the source record. OpenCR does the matching/
-    de-dup (decisionRules.json) — we are just the feeder. The patient watermark advances only
-    when every push in the run succeeded; otherwise the delta is retried next cycle."""
+    """Page changed patients -> POST one bundle per page to the mediator (-> OpenCR). Paged to stay
+    memory-safe on the initial load. The patient watermark advances only when every page succeeded."""
     wm = watermark(cur, "patient")
     ok = fail = total = 0
     max_changed = None
     offset = 0
     while True:
-        page = delta_page(cur, "patient", "fhir_id, mspp_code, patient_id, resource", wm, BATCH_SIZE, offset)
+        page = delta_page(cur, "patient", "fhir_id, resource", wm, BATCH_SIZE, offset)
         if not page:
             break
-        # sorted by fhir_id for deterministic ordering; the FHIR resource id stays the uuid
-        # (so clinical bundles can reference Patient/{uuid}).
-        for fhir_id, mspp_code, patient_id, res, _chg in sorted(page, key=lambda r: r[0]):
-            cr = send(cr_upsert_url(mspp_code, patient_id), "PUT", OPENHIM, json.loads(res))
-            good = cr in ("200", "201", "DRY_RUN")
-            ok, fail = ok + good, fail + (not good)
-            print(f"Patient/{fhir_id} (src {mspp_code}-{patient_id})  CR={cr}")
+        patients = [json.loads(res) for _fid, res, _chg in sorted(page, key=lambda r: r[0])]
+        st = post_bundle(patients)
+        good = st in ("200", "201", "DRY_RUN")
+        ok, fail = ok + (len(patients) if good else 0), fail + (0 if good else len(patients))
+        print(f"identity: page offset={offset} n={len(patients)} -> {st}")
         batch_max = latest_changed(page)
         if batch_max and (max_changed is None or batch_max > max_changed):
             max_changed = batch_max
@@ -202,17 +161,15 @@ def push_identity(cur, conn):
                 advance(cur, "patient", max_changed)
                 conn.commit()
         else:
-            print(f"  identity: holding watermark; {fail} CR push(es) failed; retried next cycle")
+            print(f"  identity: holding watermark; {fail} push(es) failed; retried next cycle")
     print(f"  identity: patients={total} ok={ok} fail={fail}")
     return fail
 
-
 def push_clinical(cur, conn):
-    """Clinical (encounter/observation/…) -> SHR, as a transaction Bundle per patient. Driven
-    only by the clinical watermarks (NOT the patient watermark), so a patient is sent to the
-    SHR exactly when its clinical changes — a demographics-only change goes to OpenCR, not here.
-    Adding a resource = a SQLMesh model + an entry in CLINICAL_VIEWS, nothing else here.
-    Each view's watermark advances only when every push in the run succeeded."""
+    """Changed clinical grouped per patient -> POST bundle(patient + its clinical) to the mediator
+    (-> OpenCR for the patient, SHR for the clinical). Driven by the clinical watermarks, so a
+    patient is pushed exactly when its clinical changes. Each view's watermark advances only on
+    full success."""
     wm = {v: watermark(cur, v) for v in CLINICAL_VIEWS}
     clinical = {v: delta(cur, v, "fhir_id, patient_fhir_id, resource", wm[v]) for v in CLINICAL_VIEWS}
     clin_by_pat = index_clinical(*clinical.values())
@@ -236,10 +193,10 @@ def push_clinical(cur, conn):
             # (FK order), so a missing patient here means intentionally excluded, not a race.
             print(f"  skip {pid}: no Patient row (voided/absent)")
             continue
-        shr = send(SHR_URL, "POST", OPENHIM, build_bundle(patient, clin_by_pat[pid]))
-        good = shr in ("200", "201", "DRY_RUN")
+        st = post_bundle([patient, *clin_by_pat[pid]])
+        good = st in ("200", "201", "DRY_RUN")
         ok, fail = ok + good, fail + (not good)
-        print(f"Patient/{pid}  SHR={shr}  changed_clinical={len(clin_by_pat[pid])}")
+        print(f"Patient/{pid}  -> {st}  changed_clinical={len(clin_by_pat[pid])}")
 
     if not DRY_RUN:
         if fail == 0:
@@ -252,20 +209,38 @@ def push_clinical(cur, conn):
             if advanced:                       # only commit when a watermark actually moved
                 conn.commit()
         else:
-            print(f"  clinical: holding watermark; {fail} SHR push(es) failed; retried next cycle")
+            print(f"  clinical: holding watermark; {fail} push(es) failed; retried next cycle")
     deltas = " ".join(f"{v}={len(rows)}" for v, rows in clinical.items())
     print(f"  clinical: patients={len(touched)} ok={ok} fail={fail}  (Δ {deltas})")
     return fail
 
+def push_globals(cur):
+    """Global (non-patient-scoped) reference resources -> one bundle to the mediator (-> SHR).
+    Re-pushed each cycle (small reference data, often without a change timestamp). Best-effort."""
+    resources = []
+    for view in GLOBAL_VIEWS:
+        try:
+            cur.execute(f"SELECT fhir_id, resource FROM fhir.{view}")
+            rows = cur.fetchall()
+        except Exception as e:  # noqa: BLE001 — view may not exist yet
+            print(f"  globals: skip {view} ({e})")
+            continue
+        resources.extend(json.loads(res) for _fid, res in rows)
+    if not resources:
+        return 0
+    st = post_bundle(resources)
+    good = st in ("200", "201", "DRY_RUN")
+    print(f"  globals: {len(resources)} resources ({','.join(GLOBAL_VIEWS)}) -> {st}")
+    return 0 if good else 1
 
 def main():
     conn = pymysql.connect(**FHIR_DB, autocommit=False)
     with conn.cursor() as cur:
         ensure_state(cur)
-        # One deployment, routing by resource type — no mode flag:
-        #   Patient  -> OpenCR (identity / MPI)
-        #   clinical -> SHR    (per-patient bundles)   [skipped if CLINICAL_VIEWS is empty]
-        #   globals  -> SHR
+        # One endpoint, the mediator routes by resource type:
+        #   identity (Patient) -> OpenCR
+        #   clinical           -> SHR   [skipped if CLINICAL_VIEWS is empty]
+        #   globals            -> SHR
         push_identity(cur, conn)
         if CLINICAL_VIEWS:
             push_clinical(cur, conn)
