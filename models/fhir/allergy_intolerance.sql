@@ -88,8 +88,14 @@ FROM consolidated_db.allergy_openmrs a
 JOIN consolidated_db.person_openmrs per
   ON per.mspp_code = a.mspp_code AND per.person_id = a.patient_id
 LEFT JOIN consolidated_db.concept c ON c.concept_id = a.coded_allergen
-LEFT JOIN consolidated_db.concept_name cn
-  ON cn.concept_id = a.coded_allergen AND cn.locale_preferred = 1 AND COALESCE(cn.voided, 0) = 0
+-- one preferred name per concept (a concept can have a preferred name per locale, which would
+-- otherwise fan the row out N times); prefer English, else any preferred name.
+LEFT JOIN (
+  SELECT concept_id, COALESCE(MAX(CASE WHEN locale = 'en' THEN name END), MAX(name)) AS name
+  FROM consolidated_db.concept_name
+  WHERE locale_preferred = 1 AND COALESCE(voided, 0) = 0
+  GROUP BY concept_id
+) cn ON cn.concept_id = a.coded_allergen
 LEFT JOIN reactions r
   ON r.mspp_code = a.mspp_code AND r.allergy_id = a.allergy_id
 WHERE COALESCE(a.voided, 0) = 0
