@@ -1,14 +1,22 @@
 #!/usr/bin/env sh
-# Render config.yaml from env, ensure the output schema is built, then serve.
+# Render config.yaml, sync the external Consolidé source into the local MySQL, build the
+# output schema, then serve the continuous loop.
 set -e
 
-# Connection to the Consolidé MySQL (external) — required, no default host/creds.
-: "${FHIR_DB_HOST:?FHIR_DB_HOST is required (the Consolidé MySQL host)}"
+# FHIR_DB_* = the LOCAL pipeline MySQL SQLMesh reads+writes (source copy + fhir output).
+: "${FHIR_DB_HOST:?FHIR_DB_HOST is required (the local pipeline MySQL)}"
 : "${FHIR_DB_USER:?FHIR_DB_USER is required}"
 : "${FHIR_DB_PASS:?FHIR_DB_PASS is required}"
 : "${FHIR_DB_PORT:=3306}"
 : "${FHIR_DB_NAME:=fhir}"
 : "${FHIR_TEST_DB:=fhir_test}"
+# SRC_* = the EXTERNAL Consolidé MySQL (read-only) we sync the source from.
+: "${SRC_HOST:?SRC_HOST is required (the external Consolidé MySQL host)}"
+: "${SRC_USER:?SRC_USER is required}"
+: "${SRC_PASS:?SRC_PASS is required}"
+: "${SRC_PORT:=3306}"
+: "${SRC_DB:=consolidated_db}"
+: "${DST_DB:=consolidated_db}"
 
 cat > /app/config.yaml <<YAML
 gateways:
@@ -20,30 +28,33 @@ model_defaults: {dialect: mysql}
 disable_anonymized_analytics: true
 YAML
 
-# Wait for the MySQL server and ensure the SQLMesh output/state schema exists
-# (the default gateway connects to FHIR_DB_NAME). Idempotent.
-echo "entrypoint: waiting for MySQL + ensuring schema ${FHIR_DB_NAME}"
+# Wait for the LOCAL MySQL and ensure the output/state schemas exist. Idempotent.
+echo "entrypoint: waiting for local MySQL ${FHIR_DB_HOST} + ensuring schemas"
 until python - <<PY 2>/dev/null
-import pymysql, os
-c = pymysql.connect(host="${FHIR_DB_HOST}", port=${FHIR_DB_PORT},
-                    user="${FHIR_DB_USER}", password="${FHIR_DB_PASS}")
+import pymysql
+c = pymysql.connect(host="${FHIR_DB_HOST}", port=${FHIR_DB_PORT}, user="${FHIR_DB_USER}", password="${FHIR_DB_PASS}")
 with c.cursor() as cur:
     cur.execute("CREATE DATABASE IF NOT EXISTS \`${FHIR_DB_NAME}\`")
     cur.execute("CREATE DATABASE IF NOT EXISTS \`${FHIR_TEST_DB}\`")
+    cur.execute("CREATE DATABASE IF NOT EXISTS \`${DST_DB}\`")
 c.commit()
 PY
 do
-  echo "entrypoint: MySQL not ready, retrying in 5s"; sleep 5
+  echo "entrypoint: local MySQL not ready, retrying in 5s"; sleep 5
 done
 
-# Build/refresh the output schema. Tests are a CI gate, not a deploy gate, so
-# --skip-tests here. Retry: consolidated_db (the source the external models read)
-# may still be initialising / unpopulated when we start.
-echo "entrypoint: applying initial sqlmesh plan (retrying until consolidated_db is ready)"
+# Initial sync: copy the external (read-only) consolidated_db into the local MySQL, so SQLMesh
+# has the source locally (MySQL can't JOIN across servers). Retry until Consolidé is reachable.
+echo "entrypoint: initial sync from Consolidé ${SRC_HOST}"
+until python loader/sync_source.py; do
+  echo "entrypoint: sync not ready (Consolidé unreachable?), retrying in 10s"; sleep 10
+done
+
+# Build the output schema from the synced source.
+echo "entrypoint: applying initial sqlmesh plan"
 until sqlmesh plan --auto-apply --skip-tests; do
-  echo "entrypoint: plan not ready yet, retrying in 10s"
-  sleep 10
+  echo "entrypoint: plan failed, retrying in 10s"; sleep 10
 done
 
-echo "entrypoint: starting the continuous poll loop"
+echo "entrypoint: starting the continuous loop (sync -> transform -> load)"
 exec sh loader/run_continuous.sh
