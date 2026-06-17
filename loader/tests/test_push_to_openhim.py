@@ -443,3 +443,18 @@ def test_mpi_only_dry_run_pushes_but_does_not_advance(monkeypatch):
     sent, conn, cur = _run_main(monkeypatch, data, mpi_only=True, dry_run=True)
     assert [(m, u) for m, u, _, _ in sent] == [("PUT", L.cr_upsert_url("11106", 11))]
     assert _advances(cur) == {} and conn.committed is False
+
+
+def test_mpi_only_blank_or_unset_defaults_to_phase1(monkeypatch):
+    # a blank/absent MPI_ONLY must NOT silently enable clinical pushing; only 0/false/no disable.
+    import importlib
+    cases = {None: True, "": True, "1": True, "yes": True, "0": False, "false": False, "FALSE": False, "no": False}
+    for val, expected in cases.items():
+        if val is None:
+            monkeypatch.delenv("MPI_ONLY", raising=False)
+        else:
+            monkeypatch.setenv("MPI_ONLY", val)
+        importlib.reload(L)
+        assert L.MPI_ONLY is expected, f"MPI_ONLY={val!r} -> {L.MPI_ONLY}"
+    monkeypatch.delenv("MPI_ONLY", raising=False)
+    importlib.reload(L)   # restore default state for the rest of the suite

@@ -52,7 +52,9 @@ SHR_URL    = env("SHR_URL",    "http://openhim-core:5001/SHR/fhir").rstrip("/")
 OPENHIM = (env("OPENHIM_USER", "consolidated"), env("OPENHIM_PASS", "consolidated"))
 DRY_RUN = env("DRY_RUN", "") not in ("", "0", "false")
 # Phase 1 (default): push Patient identities to OpenCR only — no clinical, no SHR.
-MPI_ONLY = env("MPI_ONLY", "1") not in ("", "0", "false")
+# Defaults ON unless explicitly disabled — unset OR empty both mean Phase 1, so a blank
+# MPI_ONLY env can't silently turn clinical pushing on. Only "0"/"false"/"no" => Phase 2.
+MPI_ONLY = env("MPI_ONLY", "1").strip().lower() not in ("0", "false", "no")
 # Idempotency key per the CHARESS spec: OpenCR upserts the source record on the source key
 # (mspp_code+patient_id). Must match the `source_key_system` the patient model stamps, and be
 # listed in OpenCR's `internalid` systems. Requires OpenCR conditional-update support.
