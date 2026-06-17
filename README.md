@@ -149,6 +149,15 @@ The **sync** reads Consolidé and the **loader/transform** read+write the local 
 | `DRY_RUN` | `0` | `1` = preview changes without writing to OpenHIM |
 | `INTERVAL` | `30` | Poll interval in seconds (continuous mode) |
 
+### Two modes (set by whether `SRC_*` is configured)
+
+- **SYNC** (default, `SRC_*` set) — Consolidé is read-only / a separate server. The pipeline syncs
+  `consolidated_db` into the local `FHIR_DB` MySQL, then SQLMesh runs there. (No write needed on Consolidé.)
+- **DIRECT** (no `SRC_*`) — if we get **write access to Consolidé**, skip the local copy entirely:
+  point `FHIR_DB_*` at Consolidé itself (a writable `fhir` schema beside `consolidated_db`), leave
+  `SRC_*` unset. SQLMesh reads `consolidated_db` and writes `fhir` on that one server — no sync, no
+  local MySQL. Same image; just env. The deploy package would then drop the `pipeline-db` service.
+
 ---
 
 ## Running the Pipeline
