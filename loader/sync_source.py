@@ -40,7 +40,8 @@ def source_tables():
     seen, out = set(), []
     for t in re.findall(r"`consolidated_db`\.`([a-z_]+)`", txt):
         if t not in seen:
-            seen.add(t); out.append(t)
+            seen.add(t)
+            out.append(t)
     return out
 
 def has_column(cur, db, table, col):
@@ -63,10 +64,11 @@ def advance(dcur, table, ts):
 
 def sync_table(scur, dcur, table):
     # create locally from the remote DDL if missing (sql_mode='' tolerates legacy zero-dates)
-    dcur.execute(f"SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s", (DST_DB, table))
+    dcur.execute("SELECT 1 FROM information_schema.tables WHERE table_schema=%s AND table_name=%s", (DST_DB, table))
     if not dcur.fetchone():
         scur.execute(f"SHOW CREATE TABLE `{table}`")
-        dcur.execute(f"USE `{DST_DB}`"); dcur.execute(scur.fetchone()[1])
+        dcur.execute(f"USE `{DST_DB}`")
+        dcur.execute(scur.fetchone()[1])
     has_du = has_column(scur, SRC["database"], table, "date_updated")
     since = watermark(dcur, table) if has_du else EPOCH
     # Incremental only AFTER a baseline full copy (watermark advanced past epoch). The first
@@ -97,19 +99,23 @@ def sync_table(scur, dcur, table):
     return n, ("incremental" if incremental else "full")
 
 def main():
-    s = pymysql.connect(**SRC); d = pymysql.connect(**DST, autocommit=False)
+    s = pymysql.connect(**SRC)
+    d = pymysql.connect(**DST, autocommit=False)
     with s.cursor() as scur, d.cursor() as dcur:
-        dcur.execute("SET SESSION sql_mode=''"); dcur.execute("SET FOREIGN_KEY_CHECKS=0")
+        dcur.execute("SET SESSION sql_mode=''")
+        dcur.execute("SET FOREIGN_KEY_CHECKS=0")
         dcur.execute(f"CREATE DATABASE IF NOT EXISTS `{DST_DB}`")
         ensure_state(dcur)
         total = 0
         for t in source_tables():
             try:
                 n, mode = sync_table(scur, dcur, t)
-                d.commit(); total += n
+                d.commit()
+                total += n
                 print(f"  sync {t}: {n} rows ({mode})")
             except Exception as e:  # noqa: BLE001 — keep syncing the rest; surface the failure
-                d.rollback(); print(f"  sync {t}: FAILED ({e})")
+                d.rollback()
+                print(f"  sync {t}: FAILED ({e})")
         print(f"sync done: {total} rows across source tables")
 
 if __name__ == "__main__":
