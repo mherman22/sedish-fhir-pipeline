@@ -88,7 +88,10 @@ def send(url, method, cred, body, retries=3):
             return f"EXC {e}"
 
 def ensure_state(cur):
-    cur.execute(f"CREATE DATABASE IF NOT EXISTS {STATE_DB}")
+    try:
+        cur.execute(f"CREATE DATABASE IF NOT EXISTS {STATE_DB}")
+    except Exception:  # noqa: BLE001 — DIRECT mode points STATE_DB at a pre-created schema (e.g. fhir)
+        pass            # we lack global CREATE there; the table-create below is what matters
     cur.execute(f"""CREATE TABLE IF NOT EXISTS {STATE_DB}.loader_state (
                       resource_type VARCHAR(32) PRIMARY KEY,
                       last_changed_at DATETIME NOT NULL)""")

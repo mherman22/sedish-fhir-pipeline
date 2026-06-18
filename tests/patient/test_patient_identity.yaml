@@ -57,7 +57,7 @@ test_patient_with_national_id:
       rows: |
         patient_id,mspp_code,mother_name
         11,11106,Therese Baptiste
-    ref.identifier_systems:
+    fhir.identifier_systems:
       format: csv
       rows: |
         identifier_type,system,label
@@ -127,7 +127,7 @@ test_patient_arevoir_no_national_id:
       columns: {mspp_code: varchar(10), patient_id: int}
       rows: |
         patient_id,mspp_code,mother_name
-    ref.identifier_systems:
+    fhir.identifier_systems:
       format: csv
       rows: |
         identifier_type,system,label

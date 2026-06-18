@@ -21,7 +21,7 @@ MODEL (
 /*
   consolidated_db identity rows -> FHIR Patient — shaped to match the OpenMRS fhir2
   PatientTranslator so the SHR sees the same structure the EMRs produce:
-    * identifier: element id (uuid), use, type.text (from ref.identifier_systems label), system, value
+    * identifier: element id (uuid), use, type.text (from fhir.identifier_systems label), system, value
     * name/address: element id (uuid); address detail in the fhir.openmrs.org/ext/address extension
     * deceasedBoolean / deceasedDateTime from person.dead / death_date
     * birthDate is year-only when birthdate_estimated
@@ -72,7 +72,7 @@ idents AS (
            'value', pi.identifier) AS ident,
          COALESCE(pi.date_updated, pi.date_created) AS chg
   FROM consolidated_db.patient_identifier_openmrs pi
-  LEFT JOIN ref.identifier_systems s ON s.identifier_type = pi.identifier_type
+  LEFT JOIN fhir.identifier_systems s ON s.identifier_type = pi.identifier_type
   WHERE COALESCE(pi.voided, 0) = 0
   UNION ALL
   SELECT m.mspp_code, m.patient_id,
