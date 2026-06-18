@@ -110,6 +110,32 @@ def delta_page(cur, view, cols, since, limit, offset):
     )
     return cur.fetchall()
 
+def fetch_patients(cur, keys):
+    """{fhir_id: patient_resource} for the given patient fhir_ids (chunked IN-lookups)."""
+    out = {}
+    for i in range(0, len(keys), BATCH_SIZE):
+        chunk = keys[i:i + BATCH_SIZE]
+        fmt = ",".join(["%s"] * len(chunk))
+        cur.execute(f"SELECT fhir_id, resource FROM fhir.patient WHERE fhir_id IN ({fmt})", chunk)
+        for fid, res in cur.fetchall():
+            out[fid] = json.loads(res)
+    return out
+
+def fetch_clinical(cur, keys):
+    """{patient_fhir_id: [clinical resource, ...]} across CLINICAL_VIEWS for the given patients."""
+    out = collections.defaultdict(list)
+    for view in CLINICAL_VIEWS:
+        try:
+            for i in range(0, len(keys), BATCH_SIZE):
+                chunk = keys[i:i + BATCH_SIZE]
+                fmt = ",".join(["%s"] * len(chunk))
+                cur.execute(f"SELECT patient_fhir_id, resource FROM fhir.{view} WHERE patient_fhir_id IN ({fmt})", chunk)
+                for pid, res in cur.fetchall():
+                    out[pid].append(json.loads(res))
+        except Exception as e:  # noqa: BLE001 — view may not exist yet
+            log(f"  fetch_clinical: skip {view} ({e})")
+    return out
+
 # --- pure helpers (no I/O; unit-tested in loader/tests) -------------------
 def build_bundle(resources):
     """FHIR transaction Bundle: each resource PUT by resourceType/id. The mediator splits it."""
@@ -184,14 +210,7 @@ def push_clinical(cur, conn):
     clin_by_pat = index_clinical(*clinical.values())
     touched = sorted(clin_by_pat)
 
-    # fetch the current Patient resource for each touched patient (the bundle's reference target)
-    patient_by_id = {}
-    for i in range(0, len(touched), BATCH_SIZE):
-        chunk = touched[i:i + BATCH_SIZE]
-        fmt = ",".join(["%s"] * len(chunk))
-        cur.execute(f"SELECT fhir_id, resource FROM fhir.patient WHERE fhir_id IN ({fmt})", chunk)
-        for fid, res in cur.fetchall():
-            patient_by_id[fid] = json.loads(res)
+    patient_by_id = fetch_patients(cur, touched)   # bundle reference target
 
     ok = fail = skipped = 0
     t0 = time.monotonic()
@@ -225,6 +244,29 @@ def push_clinical(cur, conn):
     log(f"  clinical: done patients={len(touched)} ok={ok} fail={fail} skipped={skipped} "
         f"{ms}ms (Δ {deltas})")
     return fail
+
+def push_patients(cur, keys):
+    """Targeted push: for each patient key, POST its FULL current bundle (patient + all clinical) to
+    the mediator, regardless of any watermark. This is the key-driven path an event/CDC consumer
+    calls (resolve changed patient -> push it), and is also handy for manual reconcile/backfill.
+    Idempotent (PUT by id). No watermark/commit — the caller owns its offset. Returns (ok, fail)."""
+    keys = sorted(set(keys))
+    patients = fetch_patients(cur, keys)
+    clinical = fetch_clinical(cur, keys)
+    ok = fail = skipped = 0
+    for pid in keys:
+        patient = patients.get(pid)
+        if not patient:
+            skipped += 1
+            log(f"  push_patients[SKIP] {pid}: no Patient row")
+            continue
+        st = post_bundle([patient, *clinical.get(pid, [])])
+        good = st in ("200", "201", "DRY_RUN")
+        ok, fail = ok + good, fail + (not good)
+        if not good:
+            log(f"  push_patients[ERR] Patient/{pid} -> {st}")
+    log(f"  push_patients: requested={len(keys)} ok={ok} fail={fail} skipped={skipped}")
+    return ok, fail
 
 def push_globals(cur):
     """Global (non-patient-scoped) reference resources -> one bundle to the mediator (-> SHR).

@@ -173,6 +173,10 @@ class FakeCursor:
         elif "from fhir.patient where fhir_id in" in s:
             self._result = [(fid, self.data["patients"][fid]) for fid in params
                             if fid in self.data["patients"]]
+        elif "where patient_fhir_id in" in s and "from fhir." in s:   # fetch_clinical by patient key
+            view = s.split("from fhir.", 1)[1].split()[0]
+            rows = self.data["delta"].get(view, [])
+            self._result = [(pid, res) for (_fid, pid, res, _chg) in rows if pid in params]
         elif "where changed_at" in s and "from fhir." in s:
             view = s.split("from fhir.", 1)[1].split()[0]   # patient / encounter / observation / …
             all_rows = self.data["delta"].get(view, [])
@@ -394,3 +398,51 @@ def test_globals_post_bundle_to_mediator(monkeypatch):
     sent, _, _ = _run_main(monkeypatch, data, clinical_views=[], global_views=["location"])
     assert [(m, u) for m, u, _, _ in sent] == [("POST", L.MEDIATOR_URL)]
     assert _bundle_ids(sent[0][3]) == ["Location/11106"]
+
+
+# ======================================================================
+# push_patients(keys) — targeted, key-driven push (for CDC / reconcile / backfill)
+# ======================================================================
+def _run_push_patients(monkeypatch, data, keys, clinical_views, send_result="200"):
+    sent = []
+    cur = FakeCursor(data)
+    monkeypatch.setattr(L, "DRY_RUN", False)
+    monkeypatch.setattr(L, "CLINICAL_VIEWS", clinical_views)
+    monkeypatch.setattr(L, "send", lambda url, method, cred, body, **kw:
+                        sent.append((method, url, body)) or send_result)
+    ok, fail = L.push_patients(cur, keys)
+    return sent, ok, fail
+
+
+def test_push_patients_pushes_full_bundle_for_each_key(monkeypatch):
+    # pA's FULL current state (patient + its clinical) is pushed; pB's obs is NOT (not requested)
+    data = {"patients": {"pA": _pat("pA"), "pB": _pat("pB")},
+            "delta": {"encounter": [("e1", "pA", _enc("e1"), DT1)],
+                      "observation": [("o1", "pA", _obs("o1"), DT1), ("o9", "pB", _obs("o9"), DT1)]}}
+    sent, ok, fail = _run_push_patients(monkeypatch, data, ["pA"], ["encounter", "observation"])
+    assert (ok, fail) == (1, 0)
+    assert [(m, u) for m, u, _ in sent] == [("POST", L.MEDIATOR_URL)]
+    ids = [e["request"]["url"] for e in sent[0][2]["entry"]]
+    assert ids[0] == "Patient/pA"                              # patient first
+    assert set(ids) == {"Patient/pA", "Encounter/e1", "Observation/o1"}  # not pB's o9
+
+
+def test_push_patients_one_bundle_per_key(monkeypatch):
+    data = {"patients": {"pA": _pat("pA"), "pB": _pat("pB")}, "delta": {"observation": []}}
+    sent, ok, fail = _run_push_patients(monkeypatch, data, ["pB", "pA"], ["observation"])
+    assert (ok, fail) == (2, 0)
+    # one POST per patient, sorted by key
+    assert [_bundle_ids(b)[0] for _m, _u, b in sent] == ["Patient/pA", "Patient/pB"]
+
+
+def test_push_patients_skips_missing_patient(monkeypatch):
+    data = {"patients": {}, "delta": {"observation": []}}
+    sent, ok, fail = _run_push_patients(monkeypatch, data, ["pX"], ["observation"])
+    assert (ok, fail) == (0, 0)        # skipped, not failed
+    assert sent == []
+
+
+def test_push_patients_reports_failures(monkeypatch):
+    data = {"patients": {"pA": _pat("pA")}, "delta": {"observation": []}}
+    sent, ok, fail = _run_push_patients(monkeypatch, data, ["pA"], ["observation"], send_result="ERR 500: []")
+    assert (ok, fail) == (0, 1)
