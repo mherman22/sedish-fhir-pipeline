@@ -37,6 +37,21 @@ SELECT
         'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                   'system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', o.mspp_code))),
         'status', 'final',
+        -- category (US Core / IPS expect it; FHIR "Preferred" binding). Derived from the OpenMRS
+        -- concept class_id (standard concept-class seed): Test/LabSet -> laboratory, Procedure ->
+        -- procedure, Finding/Symptom -> exam, else survey. Verified on live data (class 1 = CD4/
+        -- viral load = lab; class 5 = Weight/Height = finding). Refine to concept-class NAMES once
+        -- the concept_class dimension is in the extract (it currently isn't).
+        'category', JSON_ARRAY(JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
+                      'system', 'http://terminology.hl7.org/CodeSystem/observation-category',
+                      'code', CASE qc.class_id
+                                WHEN 1  THEN 'laboratory'
+                                WHEN 8  THEN 'laboratory'
+                                WHEN 2  THEN 'procedure'
+                                WHEN 5  THEN 'exam'
+                                WHEN 12 THEN 'exam'
+                                WHEN 13 THEN 'exam'
+                                ELSE 'survey' END)))),
         'code', JSON_OBJECT(
                   'coding', JSON_ARRAY(JSON_OBJECT(
                               'code', COALESCE(qc.uuid, RPAD(CAST(o.concept_id AS CHAR), 36, 'A')),

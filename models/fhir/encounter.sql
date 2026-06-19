@@ -34,7 +34,7 @@ SELECT
               JSON_OBJECT('system', 'http://sedish-haiti.org/fhir/mspp-site', 'code', e.mspp_code))),
     'status', 'finished',
     'class', JSON_OBJECT('system', 'http://terminology.hl7.org/CodeSystem/v3-ActCode', 'code', 'AMB'),
-    'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid)),
+    'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
     'period', JSON_OBJECT('start', REPLACE(CAST(e.encounter_datetime AS CHAR),' ','T'))
   ) AS resource
 FROM consolidated_db.encounter_openmrs e
