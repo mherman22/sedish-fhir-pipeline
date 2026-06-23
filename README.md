@@ -85,8 +85,30 @@ sqlmesh test                            # unit tests
 
 The `Dockerfile` builds the production image: it renders `config.yaml` from env, seeds the local
 copy (SYNC), applies the initial `sqlmesh plan`, then runs `run_continuous.sh`. CI publishes
-`ghcr.io/digi-uw/sedish-fhir-pipeline:main`, and the SEDISH `data-pipeline-consolidated-server`
-package deploys it as the `fhir-pipeline` service.
+`ghcr.io/digi-uw/sedish-fhir-pipeline:main`.
+
+### In SEDISH (the `data-pipeline-consolidated-server` package)
+
+It's deployed by the SEDISH `data-pipeline-consolidated-server` instant package as the
+`fhir-pipeline` service. `.env` (SYNC default — `CONSOLIDATED_*` is the read-only Consolidé user;
+the compose maps it to `SRC_*`/`FHIR_DB_*`):
+
+```bash
+CONSOLIDATED_HOST=<consolidé-host>
+CONSOLIDATED_USER=<read-only-user>
+CONSOLIDATED_PASS=<password>
+PIPELINE_DB_PW=pipeline                       # local pipeline-db root password
+PIPELINE_IMAGE=ghcr.io/digi-uw/sedish-fhir-pipeline:main
+```
+
+```bash
+./build-image.sh
+./instant package init -n data-pipeline-consolidated-server --env-file .env
+```
+
+For DIRECT mode (write access on Consolidé), CHARESS pre-creates the `fhir`/`sqlmesh`/`sqlmesh__fhir`
+schemas + grants, then swap in `docker-compose.direct.yml`. Full deploy/verify/troubleshooting:
+the SEDISH repo's `docs/consolidated-pipeline-setup.md`.
 
 ## Project structure
 
