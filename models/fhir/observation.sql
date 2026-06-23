@@ -74,7 +74,7 @@ SELECT
         WHEN o.value_text     IS NOT NULL THEN JSON_OBJECT('valueString', o.value_text)
         WHEN o.value_drug     IS NOT NULL THEN JSON_OBJECT('valueCodeableConcept',
                                                JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
-                                                 'system', @VAR('drug_system', 'http://openmrs.org/drugs'),
+                                                 'system', @VAR('drug_system', 'http://isanteplus.org/openmrs/drug'),
                                                  'code',   CAST(o.value_drug AS CHAR)))))
         ELSE JSON_OBJECT()
       END
