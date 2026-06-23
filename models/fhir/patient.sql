@@ -18,30 +18,9 @@ MODEL (
   )
 );
 
-/*
-  consolidated_db identity rows -> FHIR Patient — shaped to match the OpenMRS fhir2
-  PatientTranslator so the SHR sees the same structure the EMRs produce:
-    * identifier: element id (uuid), use, type.text (from fhir.identifier_systems label),
-      system, value, #location extension (location_id → consolidated_db.locations)
-    * name: id, use, family, given (given_name + middle_name), prefix (when present)
-    * address: id, ext/address1-3, city, state, country, district, postalCode
-    * deceasedBoolean / deceasedDateTime from person.dead / death_date
-    * birthDate is year-only when birthdate_estimated
-    * extension[patient-mothersMaidenName] from patient_isanteplus.mother_name
-  NOT yet mapped:
-    * name.family_name2 — no standard FHIR slot; skip or prepend to family if needed
-    * address latitude/longitude — needs the geolocation extension (rare in practice)
-    * contained Provenance (creator → Practitioner UUID) — patient_isanteplus.creator
-      is a varchar name, not a UUID; no OpenMRS users table in consolidated_db
-
-  Incremental: merged by uuid; changed_at = latest consolidated-server write across the
-  patient's demographic tables.
-*/
 WITH names AS (
   SELECT mspp_code, person_id,
          JSON_ARRAYAGG(
-           -- JSON_MERGE_PATCH: null-valued keys are removed per RFC 7396, so prefix is absent
-           -- when blank and given always contains at least given_name.
            JSON_MERGE_PATCH(
              JSON_OBJECT(
                'id',     uuid,
@@ -74,7 +53,6 @@ addresses AS (
                'city',  city_village,
                'state', state_province,
                'country', country),
-             -- district and postalCode: null removes the key (RFC 7396), present adds it.
              JSON_OBJECT(
                'district',   county_district,
                'postalCode', postal_code))) AS arr,
@@ -85,7 +63,6 @@ addresses AS (
 ),
 idents AS (
   SELECT pi.mspp_code, pi.patient_id,
-         -- Add #location extension when we can resolve the location; omit cleanly otherwise.
          JSON_MERGE_PATCH(
            JSON_OBJECT(
              'id', pi.uuid,
