@@ -2,3 +2,4 @@ identifier_type,system,label
 3,http://isanteplus.org/openmrs/fhir2/3-isanteplus-id,iSantePlus ID
 5,http://isanteplus.org/openmrs/fhir2/5-code-national,Code National
 6,http://isanteplus.org/openmrs/fhir2/6-code-st,Code ST
+9,http://isanteplus.org/openmrs/fhir2/9-code-pc,Code PC

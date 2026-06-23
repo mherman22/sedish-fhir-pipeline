@@ -26,7 +26,8 @@ MODEL (
     * deceasedBoolean / deceasedDateTime from person.dead / death_date
     * birthDate is year-only when birthdate_estimated
   NOT yet matched (need source we don't capture): the contained Provenance (creator ->
-  Practitioner) and the identifier #location extension (location_id -> Location).
+  Practitioner) — patient_isanteplus.creator is a varchar name, not a UUID; no OpenMRS
+  users table in consolidated_db.
 
   Incremental: merged by uuid; changed_at = latest consolidated-server write across the
   patient's demographic tables.
@@ -64,15 +65,27 @@ addresses AS (
 ),
 idents AS (
   SELECT pi.mspp_code, pi.patient_id,
-         JSON_OBJECT(
-           'id', pi.uuid,
-           'use', CASE WHEN pi.preferred = 1 THEN 'official' ELSE 'usual' END,
-           'type', JSON_OBJECT('text', s.label),
-           'system', s.system,
-           'value', pi.identifier) AS ident,
+         -- Add #location extension when we can resolve the location; omit cleanly otherwise.
+         JSON_MERGE_PATCH(
+           JSON_OBJECT(
+             'id', pi.uuid,
+             'use', CASE WHEN pi.preferred = 1 THEN 'official' ELSE 'usual' END,
+             'type', JSON_OBJECT('text', s.label),
+             'system', s.system,
+             'value', pi.identifier),
+           CASE WHEN l.value_reference IS NOT NULL
+                THEN JSON_OBJECT('extension', JSON_ARRAY(JSON_OBJECT(
+                       'url', 'http://fhir.openmrs.org/ext/patient/identifier#location',
+                       'valueReference', JSON_OBJECT(
+                         'reference', CONCAT('Location/', l.value_reference),
+                         'type', 'Location',
+                         'display', l.name))))
+                ELSE JSON_OBJECT() END
+         ) AS ident,
          COALESCE(pi.date_updated, pi.date_created) AS chg
   FROM consolidated_db.patient_identifier_openmrs pi
   LEFT JOIN fhir.identifier_systems s ON s.identifier_type = pi.identifier_type
+  LEFT JOIN consolidated_db.locations l ON l.location_id = pi.location_id
   WHERE COALESCE(pi.voided, 0) = 0
   UNION ALL
   SELECT m.mspp_code, m.patient_id,
@@ -128,13 +141,15 @@ phones AS (
     AND pa.value NOT REGEXP '^0+$'
   GROUP BY pa.mspp_code, pa.person_id
 ),
--- mother's first name: a demographic corroborator in OpenCR's linking cascade (CHARESS §5.2),
--- sourced from the iSantePlus denormalization. Junk values blacklisted (§4.3).
+-- mother's maiden name: demographic corroborator for OpenCR linking (CHARESS §5.2).
+-- Emitted as the standard HL7 patient-mothersMaidenName extension to match iSantePlus fhir2.
+-- Junk values blacklisted per §4.3.
 mothers AS (
   SELECT mspp_code, patient_id, MAX(TRIM(mother_name)) AS mother_name
   FROM consolidated_db.patient_isanteplus
   WHERE mother_name IS NOT NULL AND TRIM(mother_name) <> ''
     AND LOWER(TRIM(mother_name)) NOT IN ('unknown', 'inconnu', 'inconnue', 'n/a', 'na', 'none', '-', '?')
+    AND COALESCE(voided, 0) = 0
   GROUP BY mspp_code, patient_id
 )
 SELECT
@@ -184,14 +199,12 @@ SELECT
                'system', 'phone', 'value', ph.phone, 'use', 'mobile')))
         ELSE JSON_OBJECT() END
    ),
-   -- mother as Patient.contact[relationship=MTH]; feeds OpenCR's demographic cascade
-   -- (requires a matching decisionRules path in OpenCR to be used for linking).
+   -- mother's maiden name as the standard HL7 extension; matches iSantePlus fhir2 output so
+   -- the SHR and OpenCR see the same structure regardless of the feed path.
    CASE WHEN mo.mother_name IS NOT NULL
-        THEN JSON_OBJECT('contact', JSON_ARRAY(JSON_OBJECT(
-               'relationship', JSON_ARRAY(JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
-                 'system', 'http://terminology.hl7.org/CodeSystem/v3-RoleCode',
-                 'code', 'MTH', 'display', 'mother')))),
-               'name', JSON_OBJECT('text', mo.mother_name))))
+        THEN JSON_OBJECT('extension', JSON_ARRAY(JSON_OBJECT(
+               'url', 'http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName',
+               'valueString', mo.mother_name)))
         ELSE JSON_OBJECT() END
   ) AS resource
 FROM consolidated_db.patient_openmrs pt
