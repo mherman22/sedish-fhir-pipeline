@@ -3,16 +3,22 @@ test_encounter_simple:
   inputs:
     consolidated_db.encounter_openmrs:
       format: csv
-      columns: {mspp_code: varchar(10), voided: int}
+      columns: {mspp_code: varchar(10), encounter_type: int, voided: int}
       rows: |
-        encounter_id,patient_id,mspp_code,encounter_datetime,uuid,voided
-        1,11,11106,2026-01-02 09:00:00,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
+        encounter_id,patient_id,mspp_code,encounter_datetime,encounter_type,uuid,voided
+        1,11,11106,2026-01-02 09:00:00,5,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
     consolidated_db.person_openmrs:
       format: csv
       columns: {mspp_code: varchar(10), voided: int}
       rows: |
         person_id,mspp_code,uuid,voided
         11,11106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.encounter_type:
+      format: csv
+      columns: {encounter_type_id: int, mspp_code: varchar(10)}
+      rows: |
+        encounter_type_id,mspp_code,name,uuid
+        5,11106,Consultation,9c48a6a2-b7b6-11e8-96f8-529269fb1459
   outputs:
     query:
       partial: true
