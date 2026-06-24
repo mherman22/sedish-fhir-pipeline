@@ -128,9 +128,16 @@ Verified end-to-end against the live `consolidated_db` (~522-patient test set): 
 identity (including the fingerprint UNIQUE/DOUBLON → golden-record path) and clinical data land
 correctly. Open items, pending CHARESS confirmation:
 
-- `patient_identifier_type` dimension is empty — CHARESS needs to confirm identifier type `5`
-  (and `3`/`6`) is Code National before go-live, so OpenCR indexes under the right system.
-- No concept reference table yet — Observations carry local concept codes/labels; CIEL/SNOMED
-  codings will follow once it's available.
-- Phone and provider data are absent in the test set, so `Patient.telecom` and
-  `MedicationRequest.requester` are conditionally omitted.
+- `patient_identifier_type` dimension is empty in the consolidated extract — the table exists but
+  carries no rows. The iSantePlus init dump confirms the standard ID assignments (3 = iSantePlus
+  ID, 4 = Code ST, 5 = Code National, 6 = Biometrics NRC); the identifier seed has been updated
+  to match. CHARESS should run `documentation/verify-identifier-types.sql` against the live
+  consolidated_db to confirm those IDs hold, then populate the dimension so the ETL has labels
+  to stamp.
+- No concept reference tables in the consolidated extract yet — `concept_reference_map`,
+  `concept_reference_term`, and `concept_reference_source` exist in the iSantePlus schema and
+  carry CIEL/LOINC/SNOMED mappings; `concept_numeric` carries UCUM units. Once CHARESS adds
+  these to the consolidated extract, secondary codings and `valueQuantity.unit` can be emitted.
+- Phone and provider data are absent in the test set, so `Patient.telecom` is conditionally
+  omitted; `Encounter.participant` requires the `provider` table (present in iSantePlus but not
+  yet in the consolidated extract).

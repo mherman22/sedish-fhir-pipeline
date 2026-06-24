@@ -4,13 +4,14 @@
 -- Run against the consolidated_db (the ETL's source) BEFORE go-live.
 --
 -- WHY: the ETL stamps an identifier system per OpenMRS identifier_type via the
--- seed `seeds/ref_identifier_systems.csv` (currently type 3 -> iSantePlus ID,
--- 5 -> Code National, 6 -> Code ST). OpenCR's decisionRules.json matches ONLY on
--- the canonical systems (…/3-isanteplus-id, …/5-code-national, and the biometric
--- system). If the real iSantePlus identifier_type IDs differ from 3/5/6, we'd
--- stamp the wrong (or NULL) system and OpenCR would silently never match — so
--- confirm the IDs below line up with the seed, and add any matched-on type the
--- seed is missing.
+-- seed `seeds/ref_identifier_systems.csv` (type 3 -> iSantePlus ID, 4 -> Code ST,
+-- 5 -> Code National, 6 -> Biometrics National Reference Code, 9 -> Code PC).
+-- These IDs match the standard iSantePlus init dump. OpenCR's decisionRules.json
+-- matches ONLY on the canonical systems (…/3-isanteplus-id, …/5-code-national,
+-- and …/6-biometrics-national-reference-code). If the real consolidated_db uses
+-- different IDs, we'd stamp the wrong (or NULL) system and OpenCR would silently
+-- never match — so confirm the IDs below line up with the seed, and add any
+-- matched-on type the seed is missing.
 --
 -- Expected: the rows for "iSantePlus ID" / "Code National" line up with seed
 -- type_ids 3 and 5. Anything else with a high count is a candidate the seed may
