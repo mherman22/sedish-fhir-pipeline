@@ -25,6 +25,7 @@ WITH names AS (
              JSON_OBJECT(
                'id',     uuid,
                'use',    CASE WHEN preferred = 1 THEN 'official' ELSE 'usual' END,
+               'text',   CONCAT_WS(' ', NULLIF(prefix, ''), given_name, NULLIF(middle_name, ''), family_name),
                'family', family_name,
                'given',  CASE WHEN middle_name IS NOT NULL AND middle_name <> ''
                               THEN JSON_ARRAY(given_name, middle_name)
@@ -49,7 +50,7 @@ addresses AS (
                    JSON_OBJECT('url', 'http://fhir.openmrs.org/ext/address#address1', 'valueString', address1),
                    JSON_OBJECT('url', 'http://fhir.openmrs.org/ext/address#address2', 'valueString', address2),
                    JSON_OBJECT('url', 'http://fhir.openmrs.org/ext/address#address3', 'valueString', address3)))),
-               'use',   'home',
+               'use',   CASE WHEN preferred = 1 THEN 'home' ELSE 'old' END,
                'city',  city_village,
                'state', state_province,
                'country', country),
