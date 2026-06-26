@@ -27,7 +27,7 @@ SELECT
   pp.mspp_code,
   pp.patient_id,
   CONCAT('medreq-', MD5(CONCAT_WS('|', pp.mspp_code, pp.encounter_id, pp.location_id, pp.drug_id))) AS fhir_id,
-  per.uuid AS patient_fhir_id,
+  @FHIR_ID(per.uuid) AS patient_fhir_id,
   COALESCE(pp.date_updated, pp.last_updated_date, '1970-01-01 00:00:00') AS changed_at,
   JSON_OBJECT(
     'resourceType', 'MedicationRequest',
@@ -36,7 +36,7 @@ SELECT
               'system', @VAR('mspp_site_system', 'http://sedish-haiti.org/fhir/mspp-site'), 'code', pp.mspp_code))),
     'status', 'active',
     'intent', 'order',
-    'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
+    'subject', JSON_OBJECT('reference', CONCAT('Patient/', @FHIR_ID(per.uuid)), 'type', 'Patient'),
     'authoredOn', REPLACE(CAST(COALESCE(pp.visit_date, pp.dispensation_date) AS CHAR), ' ', 'T'),
     'medicationCodeableConcept', JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
               'system', @VAR('drug_system', 'http://isanteplus.org/openmrs/drug'), 'code', CAST(pp.drug_id AS CHAR)))),

@@ -21,7 +21,7 @@ SELECT
   pd.patient_id,
   CONCAT('cond-', MD5(CONCAT_WS('|', pd.mspp_code, pd.encounter_id, pd.location_id,
             pd.concept_group, pd.concept_id, pd.answer_concept_id, pd.encounter_date))) AS fhir_id,
-  per.uuid AS patient_fhir_id,
+  @FHIR_ID(per.uuid) AS patient_fhir_id,
   COALESCE(pd.date_updated, pd.last_updated_date, '1970-01-01 00:00:00') AS changed_at,
   JSON_MERGE_PATCH(
     JSON_OBJECT(
@@ -48,11 +48,11 @@ SELECT
                   'code', COALESCE(dc.uuid, RPAD(CAST(COALESCE(pd.answer_concept_id, pd.concept_id) AS CHAR), 36, 'A')),
                   'display', cn.name)),
                 'text', cn.name),
-      'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
+      'subject', JSON_OBJECT('reference', CONCAT('Patient/', @FHIR_ID(per.uuid)), 'type', 'Patient'),
       'recordedDate', REPLACE(CAST(pd.encounter_date AS CHAR), ' ', 'T')
     ),
     CASE WHEN enc.uuid IS NOT NULL
-         THEN JSON_OBJECT('encounter', JSON_OBJECT('reference', CONCAT('Encounter/', enc.uuid)))
+         THEN JSON_OBJECT('encounter', JSON_OBJECT('reference', CONCAT('Encounter/', @FHIR_ID(enc.uuid))))
          ELSE JSON_OBJECT() END
   ) AS resource
 FROM consolidated_db.patient_diagnosis pd

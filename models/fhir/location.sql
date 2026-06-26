@@ -21,10 +21,10 @@ MODEL (
   fidelity needs the OpenMRS location table (uuid, parent, country, creator).
 */
 SELECT
-  l.value_reference AS fhir_id,
+  @FHIR_ID(l.value_reference) AS fhir_id,
   JSON_OBJECT(
     'resourceType', 'Location',
-    'id', l.value_reference,
+    'id', @FHIR_ID(l.value_reference),
     'name', l.name,
     'status', CASE WHEN COALESCE(l.active, 1) = 1 THEN 'active' ELSE 'inactive' END,
     'address', JSON_OBJECT(

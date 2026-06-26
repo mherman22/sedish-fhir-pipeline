@@ -1,0 +1,29 @@
+test_encounter_dirty_uuid:
+  # A non-conformant source uuid (illegal '_', as seen in seeded test rows like
+  # test-73106-encounter_openmrs-1014) must be sanitized into a valid FHIR id
+  # (underscores -> hyphens) so HAPI accepts it (no HAPI-0521).
+  model: fhir.encounter
+  inputs:
+    consolidated_db.encounter_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), encounter_type: int, voided: int}
+      rows: |
+        encounter_id,patient_id,mspp_code,encounter_datetime,encounter_type,uuid,voided
+        1014,11,73106,2026-01-02 09:00:00,5,test-73106-encounter_openmrs-1014,0
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        person_id,mspp_code,uuid,voided
+        11,73106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.encounter_type:
+      format: csv
+      columns: {encounter_type_id: int, mspp_code: varchar(10)}
+      rows: |
+        encounter_type_id,mspp_code,name,uuid
+        5,73106,Consultation,9c48a6a2-b7b6-11e8-96f8-529269fb1459
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {mspp_code: '73106', encounter_id: 1014, fhir_id: test-73106-encounter-openmrs-1014, patient_fhir_id: fe5cae86-52a1-4713-b39d-4c05a9da3abf}

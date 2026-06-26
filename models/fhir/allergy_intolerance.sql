@@ -40,8 +40,8 @@ WITH reactions AS (
 SELECT
   a.mspp_code,
   a.allergy_id,
-  a.uuid AS fhir_id,
-  per.uuid AS patient_fhir_id,
+  @FHIR_ID(a.uuid) AS fhir_id,
+  @FHIR_ID(per.uuid) AS patient_fhir_id,
   GREATEST(
     COALESCE(a.date_updated, a.date_created, '1970-01-01 00:00:00'),
     COALESCE(r.chg, '1970-01-01 00:00:00')
@@ -49,7 +49,7 @@ SELECT
   JSON_MERGE_PATCH(
     JSON_OBJECT(
       'resourceType', 'AllergyIntolerance',
-      'id', a.uuid,
+      'id', @FHIR_ID(a.uuid),
       'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                 'system', @VAR('mspp_site_system', 'http://sedish-haiti.org/fhir/mspp-site'), 'code', a.mspp_code))),
       'type', 'allergy',
@@ -68,7 +68,7 @@ SELECT
                                WHEN 'FOOD' THEN 'food'
                                WHEN 'ENVIRONMENT' THEN 'environment'
                                ELSE 'medication' END),
-      'patient', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
+      'patient', JSON_OBJECT('reference', CONCAT('Patient/', @FHIR_ID(per.uuid)), 'type', 'Patient'),
       'recordedDate', REPLACE(CAST(a.date_created AS CHAR), ' ', 'T'),
       'code', CASE
                 WHEN a.coded_allergen IS NOT NULL THEN JSON_OBJECT(

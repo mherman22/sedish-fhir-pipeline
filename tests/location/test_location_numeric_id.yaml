@@ -1,0 +1,16 @@
+test_location_numeric_id:
+  # locations.value_reference is a purely numeric code; HAPI rejects all-numeric
+  # client-assigned ids (HAPI-0960). @FHIR_ID prefixes 'id-' so it becomes valid.
+  model: fhir.location
+  inputs:
+    consolidated_db.locations:
+      format: csv
+      columns: {value_reference: varchar(255), active: int}
+      rows: |
+        location_id,value_reference,name,active,address3,city_village,state_province
+        1,73106,Ste Helene,1,,Jacmel,Sud-Est
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {fhir_id: id-73106}

@@ -75,7 +75,7 @@ idents AS (
                 THEN JSON_OBJECT('extension', JSON_ARRAY(JSON_OBJECT(
                        'url', 'http://fhir.openmrs.org/ext/patient/identifier#location',
                        'valueReference', JSON_OBJECT(
-                         'reference', CONCAT('Location/', l.value_reference),
+                         'reference', CONCAT('Location/', @FHIR_ID(l.value_reference)),
                          'type', 'Location',
                          'display', l.name))))
                 ELSE JSON_OBJECT() END
@@ -153,7 +153,7 @@ mothers AS (
 SELECT
   pt.mspp_code,
   pt.patient_id,
-  per.uuid AS fhir_id,
+  @FHIR_ID(per.uuid) AS fhir_id,
   GREATEST(
     COALESCE(per.date_updated, per.date_created, '1970-01-01 00:00:00'),
     COALESCE(pt.date_updated,  pt.date_created,  '1970-01-01 00:00:00'),
@@ -167,7 +167,7 @@ SELECT
     JSON_MERGE_PATCH(
      JSON_OBJECT(
       'resourceType', 'Patient',
-      'id', per.uuid,
+      'id', @FHIR_ID(per.uuid),
       -- facility provenance: originating site (mspp_code).
       'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                 'system', @VAR('mspp_site_system', 'http://sedish-haiti.org/fhir/mspp-site'), 'code', pt.mspp_code))),

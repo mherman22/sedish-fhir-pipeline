@@ -19,14 +19,14 @@ MODEL (
 SELECT
   o.mspp_code,
   o.obs_id,
-  o.uuid AS fhir_id,
-  per.uuid AS patient_fhir_id,
+  @FHIR_ID(o.uuid) AS fhir_id,
+  @FHIR_ID(per.uuid) AS patient_fhir_id,
   COALESCE(o.date_updated, o.date_created, '1970-01-01 00:00:00') AS changed_at,
   JSON_MERGE_PATCH(
     JSON_MERGE_PATCH(
       JSON_OBJECT(
         'resourceType', 'Observation',
-        'id', o.uuid,
+        'id', @FHIR_ID(o.uuid),
         'meta', JSON_OBJECT('tag', JSON_ARRAY(JSON_OBJECT(
                   'system', @VAR('mspp_site_system', 'http://sedish-haiti.org/fhir/mspp-site'), 'code', o.mspp_code))),
         'status', 'final',
@@ -50,7 +50,7 @@ SELECT
                               'code', COALESCE(qc.uuid, RPAD(CAST(o.concept_id AS CHAR), 36, 'A')),
                               'display', cn.name)),
                   'text', cn.name),
-        'subject', JSON_OBJECT('reference', CONCAT('Patient/', per.uuid), 'type', 'Patient'),
+        'subject', JSON_OBJECT('reference', CONCAT('Patient/', @FHIR_ID(per.uuid)), 'type', 'Patient'),
         'effectiveDateTime', REPLACE(CAST(o.obs_datetime AS CHAR),' ','T'),
         'issued', REPLACE(CAST(o.date_created AS CHAR),' ','T')
       ),
@@ -75,7 +75,7 @@ SELECT
       END
     ),
     CASE WHEN enc.uuid IS NOT NULL
-         THEN JSON_OBJECT('encounter', JSON_OBJECT('reference', CONCAT('Encounter/', enc.uuid)))
+         THEN JSON_OBJECT('encounter', JSON_OBJECT('reference', CONCAT('Encounter/', @FHIR_ID(enc.uuid))))
          ELSE JSON_OBJECT() END
   ) AS resource
 FROM consolidated_db.obs_openmrs o
