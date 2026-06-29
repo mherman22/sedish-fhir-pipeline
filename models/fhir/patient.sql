@@ -82,10 +82,16 @@ idents AS (
          ) AS ident,
          COALESCE(pi.date_updated, pi.date_created) AS chg
   FROM consolidated_db.patient_identifier_openmrs pi
-  LEFT JOIN fhir.identifier_systems s ON s.identifier_type = pi.identifier_type
+  -- INNER JOIN: drop identifiers whose type isn't in the seed (no mapped system). A system-less
+  -- identifier is useless to OpenCR/the SHR and showed up as a bare, unlabelled value in CRUX.
+  JOIN fhir.identifier_systems s ON s.identifier_type = pi.identifier_type
   LEFT JOIN consolidated_db.locations l ON l.location_id = pi.location_id
   WHERE COALESCE(pi.voided, 0) = 0
   UNION ALL
+  -- fpnid (biometric national id) comes ONLY from national_fingerprint_mapping — the authoritative
+  -- M2SYS dedup output (CHARESS spec). The EMR's patient_identifier "biometrics" type (6) is a local
+  -- copy that can hold junk (e.g. a site+id number), so it is intentionally NOT in the seed and is
+  -- dropped by the INNER JOIN above; this is the single source of the fpnid.
   SELECT m.mspp_code, m.patient_id,
          JSON_OBJECT(
            'use', 'official',
