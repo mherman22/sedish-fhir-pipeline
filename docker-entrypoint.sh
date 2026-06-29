@@ -85,7 +85,12 @@ if [ "$MODE" = "SYNC" ]; then
   : "${SRC_USER:?SRC_USER is required in SYNC mode}"
   : "${SRC_PASS:?SRC_PASS is required in SYNC mode}"
   log "initial sync from Consolidé $SRC_HOST"
-  until python loader/sync_source.py; do
+  # sync_source.py exits 0 (changes applied) or 20 (clean run, nothing changed) on success;
+  # any other code is a real failure (e.g. Consolidé unreachable) -> retry.
+  while true; do
+    python loader/sync_source.py && break
+    rc=$?
+    [ "$rc" -eq 20 ] && break
     log "Consolidé not reachable — retrying in 10s"; sleep 10
   done
 fi
