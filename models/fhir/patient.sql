@@ -203,12 +203,20 @@ SELECT
                'system', 'phone', 'value', ph.phone, 'use', 'mobile')))
         ELSE JSON_OBJECT() END
    ),
-   -- mother's maiden name as the standard HL7 extension; matches iSantePlus fhir2 output so
-   -- the SHR and OpenCR see the same structure regardless of the feed path.
+   -- Mother's name, emitted TWO ways from the one source value:
+   --   * patient-mothersMaidenName extension — matches iSantePlus fhir2 output.
+   --   * Patient.contact[relationship=MTH].name.text — what OpenCR's mother correlator (decision
+   --     rule 3) reads. OpenCR's FHIRPath cannot evaluate extension(), so the rule needs the value
+   --     on a plain path; contact.name.text is that path. Without this the mother rule is inert.
    CASE WHEN mo.mother_name IS NOT NULL
-        THEN JSON_OBJECT('extension', JSON_ARRAY(JSON_OBJECT(
-               'url', 'http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName',
-               'valueString', mo.mother_name)))
+        THEN JSON_OBJECT(
+               'extension', JSON_ARRAY(JSON_OBJECT(
+                 'url', 'http://hl7.org/fhir/StructureDefinition/patient-mothersMaidenName',
+                 'valueString', mo.mother_name)),
+               'contact', JSON_ARRAY(JSON_OBJECT(
+                 'relationship', JSON_ARRAY(JSON_OBJECT('coding', JSON_ARRAY(JSON_OBJECT(
+                   'system', 'http://terminology.hl7.org/CodeSystem/v3-RoleCode', 'code', 'MTH')))),
+                 'name', JSON_OBJECT('text', mo.mother_name))))
         ELSE JSON_OBJECT() END
   ) AS resource
 FROM consolidated_db.patient_openmrs pt
