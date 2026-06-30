@@ -10,13 +10,13 @@
   },
   "intent": "order",
   "status": "active",
+  "priority": "routine",
   "subject": {
     "type": "Patient",
     "reference": "Patient/fe5cae86-52a1-4713-b39d-4c05a9da3abf"
   },
-  "requester": {
-    "type": "Practitioner",
-    "reference": "Practitioner/5"
+  "encounter": {
+    "reference": "Encounter/2650d51a-31b4-451b-a5fb-eb6e1a8c7a07"
   },
   "authoredOn": "2026-01-02T09:00:00",
   "resourceType": "MedicationRequest",

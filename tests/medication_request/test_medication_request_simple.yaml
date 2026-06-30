@@ -1,0 +1,31 @@
+test_medication_request_simple:
+  # A prescription becomes a FHIR MedicationRequest with priority 'routine' and an encounter
+  # reference resolved from encounter_id (both required by the IG / emitted by the fhir2 runtime).
+  # The encounter LEFT JOIN is 1:1 on encounter_id, so it must not fan the prescription row out.
+  # (The resource JSON isn't asserted here — MySQL reorders JSON object keys, so the engine
+  # compares the blob as an opaque string; see examples/medication-request.json.)
+  model: fhir.medication_request
+  inputs:
+    consolidated_db.patient_prescription:
+      format: csv
+      columns: {mspp_code: varchar(10), patient_id: int, encounter_id: int, location_id: int, drug_id: int, number_day: double, voided: int}
+      rows: |
+        patient_id,encounter_id,location_id,drug_id,visit_date,posology,number_day,voided,mspp_code
+        11,1,7,1234,2026-01-02 09:00:00,1 tab BID,30,0,11106
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        person_id,mspp_code,uuid,voided
+        11,11106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.encounter_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        encounter_id,patient_id,mspp_code,uuid,voided
+        1,11,11106,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {mspp_code: '11106', patient_id: 11, patient_fhir_id: fe5cae86-52a1-4713-b39d-4c05a9da3abf}
