@@ -3,10 +3,10 @@ test_encounter_simple:
   inputs:
     consolidated_db.encounter_openmrs:
       format: csv
-      columns: {mspp_code: varchar(10), encounter_type: int, location_id: int, voided: int}
+      columns: {mspp_code: varchar(10), encounter_type: int, location_id: int, visit_id: int, voided: int}
       rows: |
-        encounter_id,patient_id,mspp_code,encounter_datetime,encounter_type,location_id,uuid,voided
-        1,11,11106,2026-01-02 09:00:00,5,7,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
+        encounter_id,patient_id,mspp_code,encounter_datetime,encounter_type,location_id,visit_id,uuid,voided
+        1,11,11106,2026-01-02 09:00:00,5,7,9,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
     consolidated_db.person_openmrs:
       format: csv
       columns: {mspp_code: varchar(10), voided: int}
@@ -25,13 +25,20 @@ test_encounter_simple:
       rows: |
         location_id,value_reference,name,active
         7,73106,Ste Helene,1
+    # the visit this encounter belongs to -> Encounter.partOf = Encounter/<visit uuid>.
+    consolidated_db.visit_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        visit_id,patient_id,mspp_code,date_started,uuid,voided
+        9,11,11106,2026-01-02 08:55:00,7f1c0a2b-0000-4000-8000-000000000009,0
   outputs:
     query:
       # Exactly one row: the location LEFT JOIN resolves location_id 7 -> value_reference
-      # 73106 -> Location/id-73106 (the all-numeric code is prefixed by @FHIR_ID) without
-      # fanning the encounter out. The resource JSON itself isn't asserted here — MySQL
-      # reorders JSON object keys, so the engine compares the blob as an opaque string;
-      # see examples/encounter.json for the rendered Encounter.location shape.
+      # 73106 -> Location/id-73106 (the all-numeric code is prefixed by @FHIR_ID) and the visit
+      # LEFT JOIN resolves visit_id 9 -> Encounter.partOf, both without fanning the encounter out.
+      # The resource JSON itself isn't asserted here — MySQL reorders JSON object keys, so the
+      # engine compares the blob as an opaque string; see examples/encounter.json.
       partial: true
       rows:
         - {mspp_code: '11106', encounter_id: 1, fhir_id: 2650d51a-31b4-451b-a5fb-eb6e1a8c7a07}

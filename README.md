@@ -13,8 +13,9 @@ The CHARESS *Consolidé* server aggregates every iSantePlus site into one `conso
 pipeline turns that into FHIR and pushes it into the HIE:
 
 1. **Transform** — SQLMesh models read `consolidated_db` and build a `fhir` schema, one model per
-   resource type: `patient`, `encounter`, `observation`, `condition`, `allergy_intolerance`,
-   `medication_request`, `location`.
+   resource type: `patient`, `encounter`, `visit`, `observation`, `condition`, `allergy_intolerance`,
+   `medication_request`, `location`. (`visit` is an OpenMRS Visit mapped to a FHIR `Encounter`,
+   tagged `visit`; each `encounter` links up to its visit via `Encounter.partOf`.)
 2. **Load** — `loader/push_to_openhim.py` works out what changed and POSTs per-patient FHIR
    transaction Bundles to a single OpenHIM channel, `/consolidated/fhir`. It does **not** know the
    CR/SHR split — the [fhir-router mediator](https://github.com/DIGI-UW/fhir-router-mediator) routes
@@ -64,7 +65,7 @@ The container renders `config.yaml` from environment variables on start. Main on
 | `SRC_HOST/PORT/USER/PASS` | — | read-only Consolidé to sync from (**SYNC**; unset ⇒ DIRECT) |
 | `MEDIATOR_URL` | `http://openhim-core:5001/consolidated/fhir` | the fhir-router channel |
 | `OPENHIM_USER/PASS` | `consolidated` | OpenHIM client (role `emr`) for that channel |
-| `CLINICAL_VIEWS` | `encounter,observation,allergy_intolerance,condition,medication_request` | per-patient clinical bundled; empty = identity-only |
+| `CLINICAL_VIEWS` | `encounter,visit,observation,allergy_intolerance,condition,medication_request` | per-patient clinical bundled; empty = identity-only |
 | `RECONCILE_RETRACT_EVERY` | `0` | seconds between SHR retraction passes; `0` = off |
 | `INTERVAL` | `30` | seconds between cycles |
 | `DRY_RUN` | `0` | `1` = preview, no writes to OpenHIM |
@@ -141,3 +142,6 @@ correctly. Open items, pending CHARESS confirmation:
 - Phone and provider data are absent in the test set, so `Patient.telecom` is conditionally
   omitted; `Encounter.participant` requires the `provider` table (present in iSantePlus but not
   yet in the consolidated extract).
+- `visit` (Visit-as-`Encounter`) omits `Encounter.type` — the consolidated extract has no
+  visit-type label table (`visit_openmrs.visit_type_id` is present but there's nothing to
+  resolve it to a name). It can be added once CHARESS includes a visit-type dimension.

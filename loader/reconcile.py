@@ -32,9 +32,12 @@ import push_to_openhim as L
 RECONCILE_EVERY = int(L.env("RECONCILE_RETRACT_EVERY", "0"))
 SHR_PAGE = int(L.env("RECONCILE_SHR_PAGE", "200"))
 
-# managed clinical view -> FHIR resource type (only these are ever reconciled)
+# managed clinical view -> FHIR resource type (only these are ever reconciled).
+# Several views can share a type (encounter + visit both -> Encounter); retract() unions
+# their expected ids per type before comparing against the SHR (see expected_ids_by_type).
 VIEW_TO_TYPE = {
     "encounter": "Encounter",
+    "visit": "Encounter",
     "observation": "Observation",
     "allergy_intolerance": "AllergyIntolerance",
     "condition": "Condition",
@@ -57,6 +60,22 @@ def to_entered_in_error(resource):
     out = dict(resource)
     out["status"] = "entered-in-error"
     return out
+
+def expected_ids_by_type(view_ids):
+    """Group expected ids by FHIR resource type so views that share a type reconcile together.
+
+    `view_ids`: ordered [(rtype, [ids]), ...] (one entry per managed view). Returns ordered
+    [(rtype, [ids…]), ...] unioning the ids of every view of the same type. This is essential:
+    encounter and visit both produce Encounter, so reconciling per-view would make each view's
+    rows look like orphans of the other and retract everything. First-seen type order is kept
+    so the per-type pass (and its log line) is deterministic."""
+    order, acc = [], {}
+    for rtype, ids in view_ids:
+        if rtype not in acc:
+            acc[rtype] = []
+            order.append(rtype)
+        acc[rtype].extend(ids)
+    return [(rtype, acc[rtype]) for rtype in order]
 
 # --- I/O ------------------------------------------------------------------
 def expected_ids_for_view(cur, view):
@@ -81,18 +100,22 @@ def shr_ids_for_type(rtype):
     return ids
 
 def retract(cur):
-    """Retract orphans across every managed clinical view. Returns the count retracted."""
+    """Retract orphans across every managed clinical type. Returns the count retracted."""
     total = 0
+    # collect each managed view's expected ids, then union by resource type — so two views of
+    # the same type (encounter + visit -> Encounter) are reconciled as one expected set.
+    view_ids = []
     for view in L.CLINICAL_VIEWS:
         rtype = VIEW_TO_TYPE.get(view)
         if not rtype:
             L.log(f"  reconcile: skip {view} (no resource-type mapping)")
             continue
         try:
-            expected = expected_ids_for_view(cur, view)
+            view_ids.append((rtype, expected_ids_for_view(cur, view)))
         except Exception as e:  # noqa: BLE001 — view may not exist yet
             L.log(f"  reconcile: skip {view} ({e})")
             continue
+    for rtype, expected in expected_ids_by_type(view_ids):
         actual = shr_ids_for_type(rtype)
         orphans = compute_orphans(expected, actual)
         retracted = 0

@@ -1,11 +1,11 @@
 {
-  "id": "0377ce69-88c2-47f3-9be4-56964f5bb59a",
+  "id": "7f1c0a2b-0000-4000-8000-000000000009",
   "meta": {
     "tag": [
       {
-        "code": "encounter",
+        "code": "visit",
         "system": "http://fhir.openmrs.org/ext/encounter-tag",
-        "display": "Encounter"
+        "display": "Visit"
       },
       {
         "code": "11106",
@@ -17,6 +17,14 @@
     "code": "AMB",
     "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode"
   },
+  "period": {
+    "start": "2026-01-02T08:55:00"
+  },
+  "status": "in-progress",
+  "subject": {
+    "type": "Patient",
+    "reference": "Patient/fe5cae86-52a1-4713-b39d-4c05a9da3abf"
+  },
   "location": [
     {
       "location": {
@@ -26,16 +34,5 @@
       }
     }
   ],
-  "period": {
-    "start": "2026-01-02T09:00:00"
-  },
-  "partOf": {
-    "type": "Encounter",
-    "reference": "Encounter/7f1c0a2b-0000-4000-8000-000000000009"
-  },
-  "status": "finished",
-  "subject": {
-    "reference": "Patient/fe5cae86-52a1-4713-b39d-4c05a9da3abf"
-  },
   "resourceType": "Encounter"
 }

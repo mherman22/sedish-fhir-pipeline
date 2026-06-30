@@ -1,0 +1,30 @@
+test_visit_simple:
+  # An OpenMRS visit becomes a FHIR Encounter (tag 'visit'). With no date_stopped it is
+  # in-progress with no period.end; its location_id resolves through the locations table.
+  # (The resource JSON isn't asserted here — MySQL reorders JSON object keys, so the engine
+  # compares the blob as an opaque string; see examples/visit.json for the rendered shape.)
+  model: fhir.visit
+  inputs:
+    consolidated_db.visit_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), location_id: int, voided: int}
+      rows: |
+        visit_id,patient_id,mspp_code,date_started,date_stopped,location_id,uuid,voided
+        1,11,11106,2026-01-02 09:00:00,,7,7f1c0a2b-0000-4000-8000-000000000001,0
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        person_id,mspp_code,uuid,voided
+        11,11106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.locations:
+      format: csv
+      columns: {location_id: int, value_reference: varchar(255), active: int}
+      rows: |
+        location_id,value_reference,name,active
+        7,73106,Ste Helene,1
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {mspp_code: '11106', visit_id: 1, fhir_id: 7f1c0a2b-0000-4000-8000-000000000001}

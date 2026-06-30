@@ -22,15 +22,21 @@ test_encounter_dirty_uuid:
       rows: |
         encounter_type_id,mspp_code,name,uuid
         5,73106,Consultation,9c48a6a2-b7b6-11e8-96f8-529269fb1459
-    # The encounter carries no location_id, so the LEFT JOIN matches nothing and
-    # Encounter.location is omitted; this non-matching row proves the join doesn't
-    # fan the encounter out into duplicate rows.
+    # The encounter carries no location_id and no visit_id, so both LEFT JOINs match nothing and
+    # Encounter.location / Encounter.partOf are omitted; these non-matching rows prove neither join
+    # fans the encounter out into duplicate rows.
     consolidated_db.locations:
       format: csv
       columns: {location_id: int, value_reference: varchar(255), active: int}
       rows: |
         location_id,value_reference,name,active
         1,73106,Ste Helene,1
+    consolidated_db.visit_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        visit_id,patient_id,mspp_code,date_started,uuid,voided
+        9,11,73106,2026-01-02 08:55:00,7f1c0a2b-0000-4000-8000-000000000009,0
   outputs:
     query:
       partial: true

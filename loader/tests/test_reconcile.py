@@ -67,5 +67,24 @@ def test_to_entered_in_error_idempotent_returns_none():
 # --- view->type mapping ---------------------------------------------------
 def test_every_default_clinical_view_has_a_type_mapping():
     # so no managed view is silently skipped during reconcile
-    for view in ["encounter", "observation", "allergy_intolerance", "condition", "medication_request"]:
+    for view in ["encounter", "visit", "observation", "allergy_intolerance", "condition", "medication_request"]:
         assert view in R.VIEW_TO_TYPE
+
+
+def test_visit_and_encounter_share_the_encounter_type():
+    assert R.VIEW_TO_TYPE["encounter"] == R.VIEW_TO_TYPE["visit"] == "Encounter"
+
+
+# --- expected_ids_by_type (views sharing a type reconcile together) -------
+def test_expected_ids_by_type_unions_views_of_the_same_type():
+    # encounter + visit both -> Encounter: their ids MUST be unioned, else each view's rows
+    # look like orphans of the other and reconcile would retract everything.
+    grouped = R.expected_ids_by_type(
+        [("Encounter", ["e1", "e2"]), ("Encounter", ["v1"]), ("Observation", ["o1"])])
+    assert grouped == [("Encounter", ["e1", "e2", "v1"]), ("Observation", ["o1"])]
+
+
+def test_expected_ids_by_type_preserves_first_seen_order_and_handles_empty():
+    assert R.expected_ids_by_type([]) == []
+    assert R.expected_ids_by_type([("Observation", []), ("Encounter", ["e1"])]) == [
+        ("Observation", []), ("Encounter", ["e1"])]

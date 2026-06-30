@@ -76,7 +76,7 @@ EPOCH = "1970-01-01 00:00:00"
 # patient page + identity bundle size; kept small so a bundle finishes within OpenHIM's timeout
 BATCH_SIZE = int(env("BATCH_SIZE", "100"))
 # patient-scoped clinical views (add a resource = a model + an entry here). Empty => identity-only.
-CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,observation,allergy_intolerance,condition,medication_request").split(",") if v.strip()]
+CLINICAL_VIEWS = [v.strip() for v in env("CLINICAL_VIEWS", "encounter,visit,observation,allergy_intolerance,condition,medication_request").split(",") if v.strip()]
 GLOBAL_VIEWS = [v.strip() for v in env("GLOBAL_VIEWS", "location").split(",") if v.strip()]
 
 def _auth(c): return "Basic " + base64.b64encode(f"{c[0]}:{c[1]}".encode()).decode()
