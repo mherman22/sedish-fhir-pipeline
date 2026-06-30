@@ -1,0 +1,52 @@
+test_observation_group_hasmember:
+  # An obs group: parent obs 10 with two children (obs_group_id = 10). The parent must
+  # emit Observation.hasMember referencing both children, and each child is its own
+  # Observation row. The members LEFT JOIN is 1:1 on the parent obs_id, so it must not
+  # fan the parent row out. (The resource JSON isn't asserted here — MySQL reorders JSON
+  # object keys, so the engine compares the blob as an opaque string; the existing tests
+  # assert scalar columns for the same reason.)
+  model: fhir.observation
+  inputs:
+    consolidated_db.obs_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), concept_id: int, value_numeric: double, obs_group_id: int, voided: int}
+      rows: |
+        obs_id,person_id,mspp_code,concept_id,encounter_id,obs_datetime,value_numeric,obs_group_id,uuid,voided
+        10,11,11106,5085,1,2026-01-02 09:00:00,,,1a1f0c1e-0000-4000-8000-000000000010,0
+        11,11,11106,5089,1,2026-01-02 09:00:00,72.5,10,2b2f0c1e-0000-4000-8000-000000000011,0
+        12,11,11106,5090,1,2026-01-02 09:00:00,168,10,3c3f0c1e-0000-4000-8000-000000000012,0
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        person_id,mspp_code,uuid,voided
+        11,11106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.encounter_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        encounter_id,patient_id,mspp_code,uuid,voided
+        1,11,11106,2650d51a-31b4-451b-a5fb-eb6e1a8c7a07,0
+    consolidated_db.concept_name:
+      format: csv
+      columns: {concept_id: int, locale_preferred: int, voided: int}
+      rows: |
+        concept_name_id,concept_id,name,locale_preferred,concept_name_type,voided
+        1,5085,Vitals Panel,1,FULLY_SPECIFIED,0
+        2,5089,Weight (kg),1,FULLY_SPECIFIED,0
+        3,5090,Height (cm),1,FULLY_SPECIFIED,0
+    consolidated_db.concept:
+      format: csv
+      columns: {concept_id: int, class_id: int}
+      rows: |
+        concept_id,uuid,class_id
+        5085,9b3f0c1e-0000-4000-8000-000000005085,10
+        5089,4004e332-9d3a-460c-b7c9-a15afe29ce1d,5
+        5090,8c5f0c1e-0000-4000-8000-000000005090,5
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {mspp_code: '11106', obs_id: 10, fhir_id: 1a1f0c1e-0000-4000-8000-000000000010}
+        - {mspp_code: '11106', obs_id: 11, fhir_id: 2b2f0c1e-0000-4000-8000-000000000011}
+        - {mspp_code: '11106', obs_id: 12, fhir_id: 3c3f0c1e-0000-4000-8000-000000000012}

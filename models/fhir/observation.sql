@@ -16,13 +16,37 @@ MODEL (
   audits (assert_observation_has_subject)
 );
 
+/*
+  obs_openmrs -> FHIR Observation. An obs GROUP (a parent obs whose child obs carry
+  obs_group_id = the parent's obs_id) becomes Observation.hasMember references to the
+  child Observations, matching the OpenMRS fhir2 ObservationTranslator (groups are
+  expressed via hasMember, not component). Each child is emitted as its own Observation
+  row by this same model, so the references resolve within the per-patient bundle.
+  Voided children are excluded. A change to any child advances the parent's changed_at
+  (via GREATEST) so the parent re-pushes with an up-to-date hasMember.
+*/
+WITH members AS (
+  SELECT c.mspp_code,
+         c.obs_group_id,
+         JSON_ARRAYAGG(JSON_OBJECT(
+           'reference', CONCAT('Observation/', @FHIR_ID(c.uuid)),
+           'type', 'Observation')) AS arr,
+         MAX(COALESCE(c.date_updated, c.date_changed, c.date_created, '1970-01-01 00:00:00')) AS chg
+  FROM consolidated_db.obs_openmrs c
+  WHERE c.obs_group_id IS NOT NULL AND COALESCE(c.voided, 0) = 0
+  GROUP BY c.mspp_code, c.obs_group_id
+)
 SELECT
   o.mspp_code,
   o.obs_id,
   @FHIR_ID(o.uuid) AS fhir_id,
   @FHIR_ID(per.uuid) AS patient_fhir_id,
-  COALESCE(o.date_updated, o.date_created, '1970-01-01 00:00:00') AS changed_at,
+  GREATEST(
+    COALESCE(o.date_updated, o.date_created, '1970-01-01 00:00:00'),
+    COALESCE(mem.chg, '1970-01-01 00:00:00')
+  ) AS changed_at,
   JSON_MERGE_PATCH(
+   JSON_MERGE_PATCH(
     JSON_MERGE_PATCH(
       JSON_OBJECT(
         'resourceType', 'Observation',
@@ -77,10 +101,17 @@ SELECT
     CASE WHEN enc.uuid IS NOT NULL
          THEN JSON_OBJECT('encounter', JSON_OBJECT('reference', CONCAT('Encounter/', @FHIR_ID(enc.uuid))))
          ELSE JSON_OBJECT() END
+   ),
+   -- hasMember: child obs references when this obs is a group parent (omitted otherwise).
+   CASE WHEN mem.arr IS NOT NULL
+        THEN JSON_OBJECT('hasMember', mem.arr)
+        ELSE JSON_OBJECT() END
   ) AS resource
 FROM consolidated_db.obs_openmrs o
 JOIN consolidated_db.person_openmrs per
   ON per.mspp_code = o.mspp_code AND per.person_id = o.person_id
+LEFT JOIN members mem
+  ON mem.mspp_code = o.mspp_code AND mem.obs_group_id = o.obs_id
 LEFT JOIN consolidated_db.encounter_openmrs enc
   ON enc.mspp_code = o.mspp_code AND enc.encounter_id = o.encounter_id
 LEFT JOIN consolidated_db.concept qc ON qc.concept_id = o.concept_id
