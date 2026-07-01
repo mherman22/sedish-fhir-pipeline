@@ -1,0 +1,36 @@
+test_condition_simple:
+  # A diagnosis becomes a FHIR Condition. No encounter reference is emitted (the fhir2 runtime
+  # doesn't set Condition.encounter and the IG omrs-Condition profile prohibits it); the model no
+  # longer joins encounter_openmrs. (The resource JSON isn't asserted here — MySQL reorders JSON
+  # object keys, so the engine compares the blob as an opaque string.)
+  model: fhir.condition
+  inputs:
+    consolidated_db.patient_diagnosis:
+      format: csv
+      columns: {mspp_code: varchar(10), patient_id: int, encounter_id: int, location_id: int, concept_group: int, concept_id: int, answer_concept_id: int, voided: int}
+      rows: |
+        patient_id,encounter_id,location_id,encounter_date,concept_group,concept_id,answer_concept_id,voided,mspp_code
+        11,1,7,2026-01-02 09:00:00,0,5,6,0,11106
+    consolidated_db.person_openmrs:
+      format: csv
+      columns: {mspp_code: varchar(10), voided: int}
+      rows: |
+        person_id,mspp_code,uuid,voided
+        11,11106,fe5cae86-52a1-4713-b39d-4c05a9da3abf,0
+    consolidated_db.concept:
+      format: csv
+      columns: {concept_id: int}
+      rows: |
+        concept_id,uuid
+        6,116128AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+    consolidated_db.concept_name:
+      format: csv
+      columns: {concept_id: int, locale_preferred: int, voided: int}
+      rows: |
+        concept_name_id,concept_id,name,locale_preferred,concept_name_type,voided
+        1,6,Malaria,1,FULLY_SPECIFIED,0
+  outputs:
+    query:
+      partial: true
+      rows:
+        - {mspp_code: '11106', patient_id: 11, patient_fhir_id: fe5cae86-52a1-4713-b39d-4c05a9da3abf}
